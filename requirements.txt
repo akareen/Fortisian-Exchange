@@ -7,6 +7,11 @@ sortedcontainers>=2.4.0      # Efficient sorted data structures for order book
 motor>=3.3.0                  # Async MongoDB driver
 pymongo>=4.6.0                # MongoDB driver (motor dependency)
 
+# WebSocket Server
+aiohttp>=3.9.0                # Async HTTP/WebSocket server
+aiohttp-session>=2.12.0       # Session middleware for aiohttp
+cryptography>=42.0.0          # Encryption for session cookies
+
 # Testing
 pytest>=8.0.0                 # Test framework
 pytest-asyncio>=0.23.0        # Async test support
