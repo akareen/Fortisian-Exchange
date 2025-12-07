@@ -537,12 +537,13 @@ class TradingServer:
         self.exchange._on_event = self._on_exchange_event
         
         # App
-        self.app = web.Application()
+        self.app = web.Application(middlewares=[cors_middleware])
         self._setup_routes()
         self._setup_session()
-    
+
     def _setup_routes(self):
         """Set up HTTP routes."""
+        print("Setting Up Routes")
         self.app.router.add_get("/ws", self._websocket_handler)
         self.app.router.add_post("/auth/login", self._login_handler)
         self.app.router.add_post("/auth/logout", self._logout_handler)
@@ -1589,6 +1590,20 @@ def create_demo_exchange() -> Exchange:
     )
     
     return exchange
+
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == "OPTIONS":
+        resp = web.Response(status=200)
+    else:
+        resp = await handler(request)
+
+    resp.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+    resp.headers["Access-Control-Allow-Credentials"] = "true"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    # Explicitly allow Content-Type for JSON requests
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return resp
 
 
 if __name__ == "__main__":
