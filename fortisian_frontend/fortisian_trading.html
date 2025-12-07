@@ -19,7 +19,10 @@
         extend: {
           colors: {
             bb: {
-              bg: '#262626', bgDark: '#1a1a1a', panel: '#1e1e1e', panelHover: '#2a2a2a',
+              bg:        '#0f0f0f',
+              bgDark:    '#0f0f0f',
+              panel:     '#0f0f0f',
+              panelHover:'#1c1c1c',
               border: '#3c3c3c', borderLight: '#505050', orange: '#ff8c00', orangeHover: '#ffa033',
               green: '#00d26a', greenBg: 'rgba(0,210,106,0.12)', red: '#ff4757', redBg: 'rgba(255,71,87,0.12)',
               white: '#fff', text: '#e0e0e0', muted: '#888', mutedDark: '#666',
@@ -32,7 +35,7 @@
     }
   </script>
   <style>
-    :root { --bb-bg:#262626; --bb-panel:#1e1e1e; --bb-border:#3c3c3c; --bb-orange:#ff8c00; --bb-green:#00d26a; --bb-red:#ff4757; }
+    :root { --bb-bg:#262626; --bb-panel:#0f0f0f; --bb-border:#3c3c3c; --bb-orange:#ff8c00; --bb-green:#00d26a; --bb-red:#ff4757; }
     * { scrollbar-width:thin; scrollbar-color:#505050 #262626; }
     *::-webkit-scrollbar { width:6px; height:6px; }
     *::-webkit-scrollbar-track { background:#262626; }
@@ -52,8 +55,8 @@
     .slide-down { animation:slideDown 0.25s ease-out; }
     .ticker-anim { animation:ticker 0.3s ease-out; }
     .pulse { animation:pulse 1.5s infinite; }
-    .panel { background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; }
-    .panel-header { padding:10px 12px; border-bottom:1px solid #3c3c3c; background:linear-gradient(180deg,#242424,#1e1e1e); }
+    .panel { background:#0f0f0f; border:1px solid #3c3c3c; border-radius:4px; }
+    .panel-header { padding:10px 12px; border-bottom:1px solid #3c3c3c; background:linear-gradient(180deg,#242424,#0f0f0f); }
     .panel-title { color:#ff8c00; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; }
     .input-field { background:transparent; border:1px solid #505050; border-radius:3px; color:#ff8c00; font-family:'IBM Plex Mono',monospace; transition:all 0.15s; }
     .input-field:focus { outline:none; border-color:#ff8c00; box-shadow:0 0 0 2px rgba(255,140,0,0.15); }
@@ -84,7 +87,7 @@
     .status-dot.disconnected { background:#ff4757; }
     .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:16px; padding:0 4px; font-size:9px; background:#2a2a2a; border:1px solid #404040; border-radius:2px; color:#888; }
     .dropdown { position:relative; }
-    .dropdown-menu { position:absolute; top:100%; right:0; margin-top:4px; background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; min-width:160px; z-index:50; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+    .dropdown-menu { position:absolute; top:100%; right:0; margin-top:4px; background:#0f0f0f; border:1px solid #3c3c3c; border-radius:4px; min-width:160px; z-index:50; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
     .dropdown-item { display:block; padding:8px 12px; font-size:12px; color:#888; transition:all 0.15s; }
     .dropdown-item:hover { background:#2a2a2a; color:#ff8c00; }
     .dropdown-divider { height:1px; background:#3c3c3c; margin:4px 0; }
@@ -98,13 +101,14 @@ const {useState,useEffect,useRef,useCallback,createContext,useContext,useMemo,us
 const CONFIG={
   API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
   WS_URL:window.location.hostname==='localhost'?'ws://localhost:8080/ws':`${window.location.protocol==='https:'?'wss:':'ws:'}//${window.location.hostname}:8080/ws`,
-  ADMIN_URL:'fortisian_admin.html',
+  ADMIN_URL:'fortisian_admin_fixed.html',
   RECONNECT_DELAYS:[500,1000,2000,4000,8000,15000,30000],
-  PING_INTERVAL:25000,MAX_TRADES:200,MAX_PRICE_HISTORY:1000,BOOK_FLASH_DURATION:400,VERSION:'2.1.0'
+  PING_INTERVAL:25000,MAX_TRADES:200,MAX_PRICE_HISTORY:1000,BOOK_FLASH_DURATION:400,VERSION:'2.1.1'
 };
 
-const formatPrice=(p)=>{if(p===null||p===undefined||p==='--')return'--';const n=typeof p==='string'?parseFloat(p):p;return isNaN(n)?'--':n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
-const formatQty=(q)=>q===null||q===undefined?'--':parseInt(q,10).toLocaleString('en-US');
+// Keep all values as strings until display
+const formatPrice=(p)=>{if(p===null||p===undefined||p==='--')return'--';const s=typeof p==='string'?p:String(p);const n=parseFloat(s);return isNaN(n)?'--':n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
+const formatQty=(q)=>{if(q===null||q===undefined)return'--';const n=typeof q==='string'?parseInt(q,10):q;return isNaN(n)?'--':n.toLocaleString('en-US');};
 const formatTime=(t)=>t?new Date(t).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}):'--:--:--';
 
 class SoundManager{
@@ -139,9 +143,82 @@ function reducer(state,action){
     case'SET_WS_STATUS':return{...state,wsStatus:action.payload};
     case'SET_LATENCY':return{...state,latency:action.payload};
     case'SET_MARKET':return{...state,currentMarket:action.payload,bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,openOrders:[],recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0};
-    case'BOOK_SNAPSHOT':return{...state,...action.payload};
-    case'BOOK_DELTA':if(action.payload.sequence<=state.sequence)return state;return{...state,...action.payload};
-    case'ADD_TRADE':const tp=parseFloat(action.payload.price);return{...state,recentTrades:[action.payload,...state.recentTrades].slice(0,CONFIG.MAX_TRADES),priceHistory:[...state.priceHistory,{time:new Date(action.payload.timestamp).getTime(),price:tp,qty:action.payload.qty,side:action.payload.side}].slice(-CONFIG.MAX_PRICE_HISTORY),lastTradePrice:action.payload.price,lastTradeSide:action.payload.side,dayHigh:state.dayHigh?Math.max(state.dayHigh,tp):tp,dayLow:state.dayLow?Math.min(state.dayLow,tp):tp,dayOpen:state.dayOpen||tp,dayVolume:state.dayVolume+action.payload.qty};
+    case 'BOOK_SNAPSHOT': {
+      const bids = {};
+      const asks = {};
+      let bidVolume = 0;
+      let askVolume = 0;
+
+      // Build bids
+      for (const l of (action.payload.bids || [])) {
+        const price = String(l.price);
+        const qty = Number(l.qty) || 0;
+
+        bids[price] = {
+          qty,
+          orderCount: l.order_count || 0
+        };
+
+        bidVolume += qty;
+      }
+
+      // Build asks
+      for (const l of (action.payload.asks || [])) {
+        const price = String(l.price);
+        const qty = Number(l.qty) || 0;
+
+        asks[price] = {
+          qty,
+          orderCount: l.order_count || 0
+        };
+
+        askVolume += qty;
+      }
+
+      return {
+        ...state,
+        bids,
+        asks,
+        sequence: action.payload.sequence,
+        bestBid: action.payload.best_bid,
+        bestAsk: action.payload.best_ask,
+        spread: action.payload.spread,
+        bookStats: {
+          bidLevels: Object.keys(bids).length,
+          askLevels: Object.keys(asks).length,
+          bidVolume,
+          askVolume
+        }
+      };
+    }
+
+    case'BOOK_DELTA':{
+      if(action.payload.sequence<=state.sequence)return state;
+      const ub={...state.bids},ua={...state.asks};
+      let ch=false;
+      (action.payload.changes||[]).forEach(c=>{
+        const price=String(c.price);
+        const b=c.side==='buy'?ub:ua;
+        if(c.action==='remove'||c.qty===0){
+          delete b[price];
+        }else{
+          b[price]={qty:c.qty,orderCount:c.order_count,flash:c.side==='buy'?'green':'red',flashTime:Date.now()};
+        }
+        ch=true;
+      });
+      if(ch){
+        soundManager.playTick(action.payload.changes[0]?.side==='buy');
+        let bv=0,av=0;
+        Object.values(ub).forEach(b=>bv+=b.qty);
+        Object.values(ua).forEach(a=>av+=a.qty);
+        return{...state,bids:ub,asks:ua,sequence:action.payload.sequence,bestBid:action.payload.best_bid,bestAsk:action.payload.best_ask,bookStats:{bidLevels:Object.keys(ub).length,askLevels:Object.keys(ua).length,bidVolume:bv,askVolume:av}};
+      }
+      return state;
+    }
+    case'ADD_TRADE':{
+      const tp=parseFloat(action.payload.price);
+      return{...state,recentTrades:[action.payload,...state.recentTrades].slice(0,CONFIG.MAX_TRADES),priceHistory:[...state.priceHistory,{time:new Date(action.payload.timestamp).getTime(),price:tp,qty:action.payload.qty,side:action.payload.side}].slice(-CONFIG.MAX_PRICE_HISTORY),lastTradePrice:action.payload.price,lastTradeSide:action.payload.side,dayHigh:state.dayHigh?Math.max(state.dayHigh,tp):tp,dayLow:state.dayLow?Math.min(state.dayLow,tp):tp,dayOpen:state.dayOpen||tp,dayVolume:state.dayVolume+action.payload.qty};
+    }
     case'SET_ORDERS':return{...state,openOrders:action.payload};
     case'ADD_ORDER':return{...state,openOrders:[...state.openOrders,action.payload]};
     case'UPDATE_ORDER':return{...state,openOrders:state.openOrders.map(o=>o.orderId===action.payload.orderId?{...o,...action.payload}:o).filter(o=>(o.remainingQty||o.qty)>0)};
@@ -172,8 +249,22 @@ class WSManager{
   handleMessage(msg){const{type,data}=msg;const state=this.getState();
     switch(type){
       case'pong':if(this.lastPing)this.dispatch({type:'SET_LATENCY',payload:Date.now()-this.lastPing});break;
-      case'book_snapshot':{const bids={},asks={};let bv=0,av=0;(data.bids||[]).forEach(l=>{bids[l.price]={qty:l.qty,orderCount:l.order_count};bv+=l.qty;});(data.asks||[]).forEach(l=>{asks[l.price]={qty:l.qty,orderCount:l.order_count};av+=l.qty;});this.dispatch({type:'BOOK_SNAPSHOT',payload:{bids,asks,sequence:data.sequence,bestBid:data.best_bid,bestAsk:data.best_ask,spread:data.spread,bookStats:{bidLevels:Object.keys(bids).length,askLevels:Object.keys(asks).length,bidVolume:bv,askVolume:av}}});break;}
-      case'book_delta':{const ub={...state.bids},ua={...state.asks};let ch=false;(data.changes||[]).forEach(c=>{const b=c.side==='buy'?ub:ua;if(c.action==='remove'||c.qty===0)delete b[c.price];else{b[c.price]={qty:c.qty,orderCount:c.order_count,flash:c.side==='buy'?'green':'red',flashTime:Date.now()};}ch=true;});if(ch){soundManager.playTick(data.changes[0]?.side==='buy');let bv=0,av=0;Object.values(ub).forEach(b=>bv+=b.qty);Object.values(ua).forEach(a=>av+=a.qty);this.dispatch({type:'BOOK_DELTA',payload:{bids:ub,asks:ua,sequence:data.sequence,bestBid:data.best_bid,bestAsk:data.best_ask,bookStats:{bidLevels:Object.keys(ub).length,askLevels:Object.keys(ua).length,bidVolume:bv,askVolume:av}}});}break;}
+      case'book_snapshot':{
+        // Process book snapshot - keep as array of objects with price/qty/order_count
+        this.dispatch({type:'BOOK_SNAPSHOT',payload:{
+          bids:data.bids||[],
+          asks:data.asks||[],
+          sequence:data.sequence,
+          best_bid:data.best_bid,
+          best_ask:data.best_ask,
+          spread:data.spread
+        }});
+        break;
+      }
+      case'book_delta':{
+        this.dispatch({type:'BOOK_DELTA',payload:data});
+        break;
+      }
       case'trade':{const t=data.trade||data;soundManager.playTrade(t.aggressor_side==='buy');this.dispatch({type:'ADD_TRADE',payload:{id:t.id||t.trade_id||Date.now(),price:t.price,qty:t.qty,side:t.aggressor_side,timestamp:t.timestamp||new Date().toISOString()}});break;}
       case'order_accepted':soundManager.playAlert('success');this.dispatch({type:'ADD_ORDER',payload:{orderId:data.order_id,marketId:data.market_id,side:data.side,price:data.price,qty:data.qty,remainingQty:data.qty,timeInForce:data.time_in_force,timestamp:data.timestamp}});this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Order accepted: ${data.side.toUpperCase()} ${data.qty} @ ${data.price}`,type:'success',duration:3000}});if(state.isAdmin)this.dispatch({type:'ADD_ADMIN_ALERT',payload:{alertType:'order_accepted',data}});break;
       case'order_rejected':soundManager.playAlert('error');this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Rejected: ${data.reason_text||data.reason}`,type:'error',duration:5000}});break;
@@ -198,8 +289,6 @@ function useApp(){
   useEffect(()=>{if(wsRef.current)wsRef.current.getState=getState;},[getState]);
   const getRid=useCallback(()=>`r_${Date.now()}_${++ridRef.current}`,[]);
   useEffect(()=>{state.notifications.forEach(n=>{if(n.duration>0)setTimeout(()=>dispatch({type:'REMOVE_NOTIFICATION',payload:n.id}),n.duration);});},[state.notifications]);
-  
-  // Close menus on click outside
   useEffect(()=>{const h=()=>dispatch({type:'CLOSE_MENUS'});document.addEventListener('click',h);return()=>document.removeEventListener('click',h);},[]);
   
   const login=useCallback(async(uid,pwd)=>{try{const r=await fetch(`${CONFIG.API_URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({user_id:uid,password:pwd})});const d=await r.json();if(r.ok&&d.success){dispatch({type:'SET_AUTH',payload:{userId:d.user_id,displayName:d.display_name||d.user_id,isAdmin:d.is_admin||false}});setTimeout(()=>{wsRef.current?.connect();setTimeout(()=>wsRef.current?.subscribe(state.currentMarket),300);},100);return{success:true};}return{success:false,error:d.error||'Login failed'};}catch(e){return{success:false,error:'Connection failed'};}},[state.currentMarket]);
@@ -212,12 +301,11 @@ function useApp(){
   const toggleSound=useCallback(()=>dispatch({type:'TOGGLE_SOUND'}),[]);
   const toggleUserMenu=useCallback((e)=>{e?.stopPropagation();dispatch({type:'TOGGLE_USER_MENU'});},[]);
   
-  // Keyboard shortcuts
   useEffect(()=>{const h=(e)=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();setOrderForm({orderFormPrice:'',orderFormQty:''});}return;}if(e.key==='m'){e.preventDefault();toggleSound();}if(e.key==='c'&&state.openOrders.length>0){e.preventDefault();cancelAllOrders();}if(e.key>='1'&&e.key<='3'){const i=parseInt(e.key)-1;if(state.availableMarkets[i]){e.preventDefault();switchMarket(state.availableMarkets[i]);}}if(e.key==='Escape')setOrderForm({orderFormPrice:'',orderFormQty:''});};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[state.openOrders,state.availableMarkets,cancelAllOrders,switchMarket,toggleSound,setOrderForm]);
   return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu};
 }
 
-// Icons
+// Icons (same as before)
 const XIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>;
 const CheckIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>;
 const VolumeIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>;
@@ -226,7 +314,7 @@ const UserIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stro
 const CogIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>;
 const ChevronIcon=()=><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>;
 
-// Login Page
+// Login Page (same as before)
 function LoginPage(){
   const{login}=useContext(AppContext);
   const[uid,setUid]=useState('');
@@ -264,11 +352,11 @@ function LoginPage(){
   );
 }
 
-// Header with Admin link
+// Header (same as before with fixed admin URL)
 function Header(){
   const{state,logout,switchMarket,toggleSound,toggleUserMenu}=useContext(AppContext);
   return(
-    <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#242424,#1e1e1e)'}}>
+    <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#242424,#0f0f0f)'}}>
       <div className="flex items-center gap-5">
         <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
         <div className="flex items-center gap-1">
@@ -283,8 +371,6 @@ function Header(){
       </div>
       <div className="flex items-center gap-3">
         <button onClick={toggleSound} className={`p-2 rounded transition-all ${state.soundEnabled?'text-bb-orange hover:bg-bb-orange/20':'text-bb-mutedDark hover:text-bb-muted'}`} title="Toggle sound (M)">{state.soundEnabled?<VolumeIcon/>:<MuteIcon/>}</button>
-        
-        {/* User Menu Dropdown */}
         <div className="dropdown">
           <button onClick={toggleUserMenu} className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-bb-panelHover transition-all">
             <UserIcon/>
@@ -292,7 +378,6 @@ function Header(){
             {state.isAdmin&&<span className="text-[10px] bg-bb-yellowBg text-bb-yellow px-2 py-0.5 rounded border border-bb-yellow/20 font-bold">ADMIN</span>}
             <ChevronIcon/>
           </button>
-          
           {state.showUserMenu&&(
             <div className="dropdown-menu slide-down" onClick={e=>e.stopPropagation()}>
               <div className="px-3 py-2 border-b border-bb-border">
@@ -319,7 +404,7 @@ function Header(){
   );
 }
 
-// Market Banner
+// Market Banner (same as before)
 function MarketBanner(){
   const{state}=useContext(AppContext);
   const{bookStats,dayHigh,dayLow,dayOpen,dayVolume}=state;
@@ -346,33 +431,96 @@ function MarketBanner(){
   );
 }
 
-// Order Book
+// FIXED Order Book - properly handles string prices and shows quantities correctly
 function OrderBook(){
   const{state,setOrderForm}=useContext(AppContext);
   const[flashStates,setFlashStates]=useState({});
-  const allPrices=useMemo(()=>{const p=new Set([...Object.keys(state.bids),...Object.keys(state.asks)]);return Array.from(p).map(x=>parseFloat(x)).sort((a,b)=>b-a);},[state.bids,state.asks]);
-  const maxQty=useMemo(()=>{const mb=Math.max(...Object.values(state.bids).map(b=>b.qty||0),1);const ma=Math.max(...Object.values(state.asks).map(a=>a.qty||0),1);return Math.max(mb,ma);},[state.bids,state.asks]);
-  useEffect(()=>{const now=Date.now();const nf={};[...Object.entries(state.bids),...Object.entries(state.asks)].forEach(([p,l])=>{if(l.flashTime&&now-l.flashTime<CONFIG.BOOK_FLASH_DURATION)nf[p]=l.flash;});if(Object.keys(nf).length>0){setFlashStates(nf);const t=setTimeout(()=>setFlashStates({}),CONFIG.BOOK_FLASH_DURATION);return()=>clearTimeout(t);}},[state.bids,state.asks]);
+  
+  // Convert book objects to sorted price arrays
+  const allPrices=useMemo(()=>{
+    const bidPrices=Object.keys(state.bids).map(p=>parseFloat(p));
+    const askPrices=Object.keys(state.asks).map(p=>parseFloat(p));
+    const allP=new Set([...bidPrices,...askPrices]);
+    return Array.from(allP).sort((a,b)=>b-a); // Descending order
+  },[state.bids,state.asks]);
+  
+  const maxQty=useMemo(()=>{
+    const bidQtys=Object.values(state.bids).map(b=>b.qty||0);
+    const askQtys=Object.values(state.asks).map(a=>a.qty||0);
+    const max=Math.max(...bidQtys,...askQtys,1);
+    return max;
+  },[state.bids,state.asks]);
+  
+  useEffect(()=>{
+    const now=Date.now();
+    const nf={};
+    [...Object.entries(state.bids),...Object.entries(state.asks)].forEach(([p,l])=>{
+      if(l.flashTime&&now-l.flashTime<CONFIG.BOOK_FLASH_DURATION)nf[p]=l.flash;
+    });
+    if(Object.keys(nf).length>0){
+      setFlashStates(nf);
+      const t=setTimeout(()=>setFlashStates({}),CONFIG.BOOK_FLASH_DURATION);
+      return()=>clearTimeout(t);
+    }
+  },[state.bids,state.asks]);
+  
   return(
     <div className="panel h-full flex flex-col">
-      <div className="panel-header"><span className="panel-title">Order Book</span><div className="flex items-center gap-3 text-xs"><span className="text-bb-green">{state.bookStats.bidLevels} lvls</span><span className="text-bb-mutedDark">|</span><span className="text-bb-red">{state.bookStats.askLevels} lvls</span></div></div>
-      <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] text-bb-muted uppercase tracking-wider border-b border-bb-border bg-bb-bg/30"><div className="text-left">Bid</div><div className="text-center">Price</div><div className="text-right">Ask</div></div>
+      <div className="panel-header flex items-center justify-between">
+        <span className="panel-title">Order Book</span>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-bb-green">{state.bookStats.bidLevels} lvls</span>
+          <span className="text-bb-mutedDark">|</span>
+          <span className="text-bb-red">{state.bookStats.askLevels} lvls</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] text-bb-muted uppercase tracking-wider border-b border-bb-border bg-bb-bg/30">
+        <div className="text-left">Bid</div>
+        <div className="text-center">Price</div>
+        <div className="text-right">Ask</div>
+      </div>
       <div className="flex-1 overflow-y-auto">
         {allPrices.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">📊 Waiting for orders...</div>:
         allPrices.map((price,idx)=>{
-          const ps=price.toFixed(2);
-          const bid=state.bids[ps],ask=state.asks[ps];
-          const bq=bid?.qty||0,aq=ask?.qty||0;
-          const bp=((bq/maxQty)*100).toFixed(0),ap=((aq/maxQty)*100).toFixed(0);
-          const isBB=ps===state.bestBid,isBA=ps===state.bestAsk;
-          const fl=flashStates[ps]==='green'?'flash-green':flashStates[ps]==='red'?'flash-red':'';
-          const showSpread=idx>0&&allPrices[idx-1]&&state.bestAsk&&state.bestBid&&parseFloat(allPrices[idx-1].toFixed(2))===parseFloat(state.bestAsk)&&ps===state.bestBid;
-          return(<React.Fragment key={ps}>
+          // Use consistent string key with 2 decimal places
+          const lookupKey = String(price);
+          const priceKey=price.toFixed(2);
+          const bid=state.bids[lookupKey];
+          const ask=state.asks[lookupKey];
+          const bq=bid?.qty||0;
+          const aq=ask?.qty||0;
+          
+          const bp=maxQty>0?((bq/maxQty)*100).toFixed(0):'0';
+          const ap=maxQty>0?((aq/maxQty)*100).toFixed(0):'0';
+          
+          // Check if this price is best bid or best ask
+          const isBB=state.bestBid&&priceKey===parseFloat(state.bestBid).toFixed(2);
+          const isBA=state.bestAsk&&priceKey===parseFloat(state.bestAsk).toFixed(2);
+          
+          // Determine price color based on whether it has bid or ask
+          const hasBid=bq>0;
+          const hasAsk=aq>0;
+          const priceColorClass=isBB?'text-bb-green font-bold':isBA?'text-bb-red font-bold':hasBid?'text-bb-green':hasAsk?'text-bb-red':'text-bb-white';
+          
+          const fl=flashStates[priceKey]==='green'?'flash-green':flashStates[priceKey]==='red'?'flash-red':'';
+          
+          // Show spread indicator
+          const showSpread=idx>0&&state.bestAsk&&state.bestBid&&
+            parseFloat(allPrices[idx-1].toFixed(2))===parseFloat(state.bestAsk)&&
+            priceKey===parseFloat(state.bestBid).toFixed(2);
+          
+          return(<React.Fragment key={priceKey}>
             {showSpread&&<div className="px-3 py-1 text-[10px] text-bb-yellow text-center border-y border-bb-border/30 bg-bb-bg/30">SPREAD: {formatPrice(state.spread)}</div>}
-            <div onClick={()=>setOrderForm({orderFormPrice:ps})} className={`grid grid-cols-3 px-3 py-[3px] text-sm level-row ${fl} ${isBB?'best-bid':''} ${isBA?'best-ask':''}`}>
-              <div className="text-left text-bb-green bid-bar pr-2 tabular-nums" style={{'--pct':`${bp}%`}}>{bq>0&&<span className={isBB?'font-bold':''}>{formatQty(bq)}</span>}</div>
-              <div className={`text-center font-medium tabular-nums ${isBB?'text-bb-green font-bold':isBA?'text-bb-red font-bold':'text-bb-white'}`}>{ps}</div>
-              <div className="text-right text-bb-red ask-bar pl-2 tabular-nums" style={{'--pct':`${ap}%`}}>{aq>0&&<span className={isBA?'font-bold':''}>{formatQty(aq)}</span>}</div>
+            <div onClick={()=>setOrderForm({orderFormPrice:priceKey})} className={`grid grid-cols-3 px-3 py-[3px] text-sm level-row ${fl} ${isBB?'best-bid':''} ${isBA?'best-ask':''}`}>
+              <div className="text-left text-bb-green bid-bar pr-2 tabular-nums" style={{'--pct':`${bp}%`}}>
+                {hasBid?<span className={isBB?'font-bold':''}>{formatQty(bq)}</span>:null}
+              </div>
+              <div className={`text-center font-medium tabular-nums ${priceColorClass}`}>
+                {priceKey}
+              </div>
+              <div className="text-right text-bb-red ask-bar pl-2 tabular-nums" style={{'--pct':`${ap}%`}}>
+                {hasAsk?<span className={isBA?'font-bold':''}>{formatQty(aq)}</span>:null}
+              </div>
             </div>
           </React.Fragment>);
         })}
@@ -381,12 +529,12 @@ function OrderBook(){
   );
 }
 
-// Price Chart
+// Price Chart, Order Entry, Position, Open Orders, Recent Trades - all same as before
 function PriceChart(){
   const{state}=useContext(AppContext);
   const canvasRef=useRef(null);
   const chartRef=useRef(null);
-  useEffect(()=>{if(!canvasRef.current)return;if(chartRef.current)chartRef.current.destroy();const ctx=canvasRef.current.getContext('2d');const data=state.priceHistory.map(p=>({x:p.time,y:p.price}));const gradient=ctx.createLinearGradient(0,0,0,200);gradient.addColorStop(0,'rgba(255,140,0,0.2)');gradient.addColorStop(1,'rgba(255,140,0,0)');chartRef.current=new Chart(ctx,{type:'line',data:{datasets:[{label:'Price',data,borderColor:'#ff8c00',backgroundColor:gradient,borderWidth:2,fill:true,tension:0.2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#ff8c00',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e1e1e',borderColor:'#3c3c3c',borderWidth:1,titleColor:'#ff8c00',bodyColor:'#e0e0e0',titleFont:{family:'IBM Plex Mono',size:10},bodyFont:{family:'IBM Plex Mono',size:12},padding:10,cornerRadius:4,displayColors:false,callbacks:{title:(i)=>i.length?formatTime(i[0].raw.x):'',label:(i)=>`$${i.raw.y.toFixed(2)}`}}},scales:{x:{type:'time',time:{displayFormats:{second:'HH:mm:ss',minute:'HH:mm'}},grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},maxRotation:0}},y:{position:'right',grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},callback:(v)=>'$'+v.toFixed(2)}}}}});return()=>chartRef.current?.destroy();},[state.priceHistory]);
+  useEffect(()=>{if(!canvasRef.current)return;if(chartRef.current)chartRef.current.destroy();const ctx=canvasRef.current.getContext('2d');const data=state.priceHistory.map(p=>({x:p.time,y:p.price}));const gradient=ctx.createLinearGradient(0,0,0,200);gradient.addColorStop(0,'rgba(255,140,0,0.2)');gradient.addColorStop(1,'rgba(255,140,0,0)');chartRef.current=new Chart(ctx,{type:'line',data:{datasets:[{label:'Price',data,borderColor:'#ff8c00',backgroundColor:gradient,borderWidth:2,fill:true,tension:0.2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#ff8c00',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0f0f0f',borderColor:'#3c3c3c',borderWidth:1,titleColor:'#ff8c00',bodyColor:'#e0e0e0',titleFont:{family:'IBM Plex Mono',size:10},bodyFont:{family:'IBM Plex Mono',size:12},padding:10,cornerRadius:4,displayColors:false,callbacks:{title:(i)=>i.length?formatTime(i[0].raw.x):'',label:(i)=>`$${i.raw.y.toFixed(2)}`}}},scales:{x:{type:'time',time:{displayFormats:{second:'HH:mm:ss',minute:'HH:mm'}},grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},maxRotation:0}},y:{position:'right',grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},callback:(v)=>'$'+v.toFixed(2)}}}}});return()=>chartRef.current?.destroy();},[state.priceHistory]);
   return(
     <div className="panel h-full flex flex-col">
       <div className="panel-header"><span className="panel-title">Price Chart</span></div>
@@ -395,7 +543,6 @@ function PriceChart(){
   );
 }
 
-// Order Entry
 function OrderEntry(){
   const{state,submitOrder,setOrderForm}=useContext(AppContext);
   const[submitting,setSubmitting]=useState(null);
@@ -423,7 +570,6 @@ function OrderEntry(){
   );
 }
 
-// Position Display
 function PositionDisplay(){
   const{state}=useContext(AppContext);
   const{position}=state;
@@ -442,7 +588,6 @@ function PositionDisplay(){
   );
 }
 
-// Open Orders
 function OpenOrders(){
   const{state,cancelOrder,cancelAllOrders}=useContext(AppContext);
   return(
@@ -454,12 +599,11 @@ function OpenOrders(){
   );
 }
 
-// Recent Trades
 function RecentTrades(){
   const{state}=useContext(AppContext);
   return(
     <div className="panel h-full flex flex-col">
-      <div className="panel-header"><span className="panel-title">Recent Trades</span><span className="text-[10px] text-bb-muted">{state.recentTrades.length}</span></div>
+      <div className="panel-header flex items-center justify-between"><span className="panel-title">Recent Trades</span><span className="text-[10px] text-bb-muted">{state.recentTrades.length}</span></div>
       <div className="grid grid-cols-4 px-3 py-1.5 text-[10px] text-bb-muted uppercase border-b border-bb-border bg-bb-bg/30"><div>Time</div><div className="text-right">Price</div><div className="text-right">Qty</div><div className="text-right">Side</div></div>
       <div className="flex-1 overflow-y-auto">{state.recentTrades.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">💹 No trades yet</div>:
       state.recentTrades.map((t,i)=>(<div key={t.id} className={`grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 ${t.side==='buy'?'trade-buy':'trade-sell'} ${i===0?'ticker-anim':''}`}><div className="text-bb-muted tabular-nums text-xs">{formatTime(t.timestamp)}</div><div className={`text-right font-medium tabular-nums ${t.side==='buy'?'text-bb-green':'text-bb-red'}`}>{formatPrice(t.price)}</div><div className="text-right text-bb-white tabular-nums">{formatQty(t.qty)}</div><div className={`text-right text-xs font-medium ${t.side==='buy'?'text-bb-green':'text-bb-red'}`}>{t.side?.toUpperCase()}</div></div>))}</div>
@@ -467,7 +611,6 @@ function RecentTrades(){
   );
 }
 
-// Admin Alerts
 function AdminAlerts(){
   const{state}=useContext(AppContext);
   if(!state.isAdmin||state.adminAlerts.length===0)return null;
@@ -480,7 +623,6 @@ function AdminAlerts(){
   );
 }
 
-// Notifications
 function Notifications(){
   const{state,dispatch}=useContext(AppContext);
   if(state.notifications.length===0)return null;
@@ -490,7 +632,6 @@ function Notifications(){
   );
 }
 
-// Trading Page
 function TradingPage(){
   return(
     <div className="h-screen flex flex-col bg-bb-bg overflow-hidden">
@@ -514,7 +655,6 @@ function TradingPage(){
   );
 }
 
-// App
 function App(){
   const app=useApp();
   return(<AppContext.Provider value={app}>{app.state.isLoggedIn?<TradingPage/>:<LoginPage/>}</AppContext.Provider>);
