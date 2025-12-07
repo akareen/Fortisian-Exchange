@@ -3,11 +3,13 @@ WebSocket API Server for the Trading Exchange.
 
 Features:
 - WebSocket-only trading (no REST API for orders)
-- Session-based authentication with secure cookies
+- Session-based authentication with password verification
 - Aggressive rate limiting (token bucket)
 - Anomaly detection for bot behavior
 - Comprehensive audit logging
-- Admin controls
+- Admin controls and analytics
+- Sweep orders
+- Proper ownership verification for all operations
 
 Anti-Gaming Measures:
 1. No documented REST API - WebSocket only
@@ -15,6 +17,12 @@ Anti-Gaming Measures:
 3. Timing anomaly detection
 4. Session fingerprinting
 5. Origin validation
+
+Security:
+- Users can only cancel their own orders
+- Users can only view their own positions
+- Admin APIs require admin authentication
+- All operations are audit logged
 """
 
 from __future__ import annotations
@@ -48,6 +56,9 @@ from matching_engine import (
 )
 
 from book_cache import BookCacheManager, BookCacheConfig
+from auth import UserStore, SessionManager as AuthSessionManager, create_auth_system
+from sweep_orders import SweepOrderManager, SweepAllocation
+from analytics import AdminAnalytics
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -482,11 +493,24 @@ class TradingServer:
         exchange: Exchange,
         config: ServerConfig | None = None,
         book_cache_config: BookCacheConfig | None = None,
+        user_store: UserStore | None = None,
+        user_storage_path: str | None = None,
     ):
         self.exchange = exchange
         self.config = config or ServerConfig()
         self.sessions = SessionManager()
         self.audit = AuditLogger()
+        
+        # Authentication system
+        if user_store:
+            self.user_store = user_store
+            self.auth_sessions = AuthSessionManager(user_store)
+        else:
+            self.user_store, self.auth_sessions = create_auth_system(
+                storage_path=user_storage_path,
+                create_default_admin=True,
+                default_admin_password=self.config.admin_token[:12],
+            )
         
         # Book cache for fast reads without impacting matching engine
         self.book_cache = BookCacheManager(book_cache_config or BookCacheConfig())
@@ -496,6 +520,12 @@ class TradingServer:
         
         # Set up book update callback to push to clients
         self.book_cache.set_update_callback(self._on_book_cache_update)
+        
+        # Sweep order manager
+        self.sweep_manager = SweepOrderManager(exchange)
+        
+        # Analytics (admin only)
+        self.analytics = AdminAnalytics(exchange)
         
         # WebSocket connections by user
         self._connections: dict[str, web.WebSocketResponse] = {}
@@ -524,6 +554,18 @@ class TradingServer:
         self.app.router.add_post("/admin/ban", self._admin_ban_handler)
         self.app.router.add_post("/admin/unban", self._admin_unban_handler)
         self.app.router.add_post("/admin/market/{action}", self._admin_market_handler)
+        
+        # Admin user management
+        self.app.router.add_post("/admin/users/create", self._admin_create_user_handler)
+        self.app.router.add_post("/admin/users/bulk_create", self._admin_bulk_create_users_handler)
+        self.app.router.add_get("/admin/users", self._admin_list_users_handler)
+        
+        # Admin analytics
+        self.app.router.add_get("/admin/analytics/trades", self._admin_trades_handler)
+        self.app.router.add_get("/admin/analytics/user/{user_id}", self._admin_user_analysis_handler)
+        self.app.router.add_get("/admin/analytics/market/{market_id}", self._admin_market_analysis_handler)
+        self.app.router.add_get("/admin/analytics/leaderboard", self._admin_leaderboard_handler)
+        self.app.router.add_get("/admin/analytics/anomalies", self._admin_anomalies_handler)
     
     def _setup_session(self):
         """Set up session middleware."""
@@ -547,54 +589,58 @@ class TradingServer:
     # ─────────────────────────────────────────────────────────────────────────
     
     async def _login_handler(self, request: web.Request) -> web.Response:
-        """Handle login requests."""
+        """Handle login requests with password verification."""
         try:
             data = await request.json()
         except json.JSONDecodeError:
             return web.json_response({"error": "Invalid JSON"}, status=400)
         
         user_id = data.get("user_id", "").strip()
-        password = data.get("password", "")  # In production, validate against DB
+        password = data.get("password", "")
         
         if not user_id:
             return web.json_response({"error": "user_id required"}, status=400)
         
-        # Validate user_id format
-        if not user_id.replace("_", "").replace("-", "").isalnum():
-            return web.json_response({"error": "Invalid user_id format"}, status=400)
+        if not password:
+            return web.json_response({"error": "password required"}, status=400)
         
-        if len(user_id) > 32:
-            return web.json_response({"error": "user_id too long"}, status=400)
-        
-        # Check if banned
-        if self.sessions.is_banned(user_id):
-            self.audit.log(
-                AuditEventType.LOGIN,
-                user_id=user_id,
-                ip_address=request.remote,
-                user_agent=request.headers.get("User-Agent"),
-                success=False,
-                reason="banned",
-            )
-            return web.json_response({"error": "User is banned"}, status=403)
-        
-        # Create session
         ip_address = request.remote or "unknown"
         user_agent = request.headers.get("User-Agent", "unknown")
         
-        # Check if admin (simple token check - use proper auth in production)
-        is_admin = data.get("admin_token") == self.config.admin_token
+        # Authenticate using the auth system
+        auth_result = self.auth_sessions.login(
+            user_id=user_id,
+            password=password,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         
+        # Check if login failed
+        if isinstance(auth_result, tuple) and auth_result[0] is None:
+            self.audit.log(
+                AuditEventType.LOGIN,
+                user_id=user_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                success=False,
+                reason=auth_result[1],
+            )
+            return web.json_response({"error": auth_result[1]}, status=401)
+        
+        auth_session = auth_result
+        
+        # Also create legacy session for compatibility
         session = self.sessions.create_session(
             user_id=user_id,
             ip_address=ip_address,
             user_agent=user_agent,
-            is_admin=is_admin,
+            is_admin=auth_session.is_admin,
         )
         
         # Store session ID in cookie session
         aio_session = await aiohttp_session.get_session(request)
         aio_session["session_id"] = session.session_id
+        aio_session["auth_session_id"] = auth_session.session_id
         aio_session["user_id"] = user_id
         
         self.audit.log(
@@ -603,14 +649,15 @@ class TradingServer:
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            is_admin=is_admin,
+            is_admin=auth_session.is_admin,
         )
         
         return web.json_response({
             "success": True,
             "user_id": user_id,
+            "display_name": auth_session.user.display_name,
             "session_id": session.session_id,
-            "is_admin": is_admin,
+            "is_admin": auth_session.is_admin,
         })
     
     async def _logout_handler(self, request: web.Request) -> web.Response:
@@ -747,6 +794,8 @@ class TradingServer:
             "get_book": self._handle_get_book,
             "get_level2": self._handle_get_level2,
             "get_bbo": self._handle_get_bbo,
+            "sweep_order": self._handle_sweep_order,
+            "cancel_sweep": self._handle_cancel_sweep,
         }
         
         handler = handlers.get(msg_type)
@@ -1063,6 +1112,10 @@ class TradingServer:
         # Update book cache (synchronous, fast)
         self.book_cache.on_event(event)
         
+        # Record trades for analytics
+        if isinstance(event, TradeExecuted):
+            self.analytics.record_trade(event.trade)
+        
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(self._broadcast_event(event))
@@ -1191,6 +1244,7 @@ class TradingServer:
             return web.json_response({"error": "user_id required"}, status=400)
         
         self.sessions.ban_user(user_id, reason)
+        self.auth_sessions.ban_user(user_id, reason)  # Also ban in auth system
         self.exchange.cancel_all_user_orders_all_markets(user_id)
         
         self.audit.log(
@@ -1218,6 +1272,7 @@ class TradingServer:
             return web.json_response({"error": "user_id required"}, status=400)
         
         self.sessions.unban_user(user_id)
+        self.auth_sessions.unban_user(user_id)  # Also unban in auth system
         
         self.audit.log(
             AuditEventType.ADMIN_ACTION,
@@ -1267,6 +1322,225 @@ class TradingServer:
             "timestamp": datetime.now(UTC).isoformat(),
             "markets": len(self.exchange.list_markets()),
             "connections": len(self._connections),
+        })
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Sweep Order Handlers
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    async def _handle_sweep_order(self, session: UserSession, data: dict, request_id: str | None) -> None:
+        """Handle sweep order submission."""
+        market_id = data.get("market_id", "")
+        side = data.get("side", "")
+        start_price = data.get("start_price", "")
+        end_price = data.get("end_price", "")
+        total_qty = data.get("qty", 0)
+        allocation = data.get("allocation", "equal")
+        
+        if not all([market_id, side, start_price, end_price, total_qty]):
+            await self._send(session, make_error("market_id, side, start_price, end_price, qty required", request_id=request_id))
+            return
+        
+        # Map allocation string to enum
+        alloc_map = {
+            "equal": SweepAllocation.EQUAL,
+            "front_weighted": SweepAllocation.FRONT_WEIGHTED,
+            "back_weighted": SweepAllocation.BACK_WEIGHTED,
+        }
+        alloc = alloc_map.get(allocation, SweepAllocation.EQUAL)
+        
+        self.audit.log(
+            AuditEventType.ORDER_SUBMIT,
+            user_id=session.user_id,
+            ip_address=session.ip_address,
+            market_id=market_id,
+            side=side,
+            order_type="sweep",
+            start_price=start_price,
+            end_price=end_price,
+            qty=total_qty,
+        )
+        
+        result = self.sweep_manager.submit_sweep(
+            market_id=market_id,
+            user_id=session.user_id,
+            side=side,
+            start_price=start_price,
+            end_price=end_price,
+            total_qty=total_qty,
+            allocation=alloc,
+        )
+        
+        await self._send(session, make_response(MessageType.ORDER_ACCEPTED, result.to_dict(), request_id))
+    
+    async def _handle_cancel_sweep(self, session: UserSession, data: dict, request_id: str | None) -> None:
+        """Handle sweep order cancellation - only owner can cancel."""
+        sweep_id = data.get("sweep_id", "")
+        
+        if not sweep_id:
+            await self._send(session, make_error("sweep_id required", request_id=request_id))
+            return
+        
+        # Ownership check is done inside cancel_sweep
+        count = self.sweep_manager.cancel_sweep(sweep_id, session.user_id)
+        
+        await self._send(session, make_response(MessageType.ORDER_CANCELLED, {
+            "sweep_id": sweep_id,
+            "cancelled_count": count,
+        }, request_id))
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Admin User Management Handlers
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    async def _admin_create_user_handler(self, request: web.Request) -> web.Response:
+        """Create a new user (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        data = await request.json()
+        user_id = data.get("user_id", "").strip()
+        password = data.get("password", "")
+        display_name = data.get("display_name")
+        is_admin = data.get("is_admin", False)
+        team = data.get("team")
+        
+        if not user_id or not password:
+            return web.json_response({"error": "user_id and password required"}, status=400)
+        
+        try:
+            user = self.user_store.create_user(
+                user_id=user_id,
+                password=password,
+                display_name=display_name,
+                is_admin=is_admin,
+                team=team,
+            )
+            return web.json_response({
+                "success": True,
+                "user": user.to_dict(),
+            })
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+    
+    async def _admin_bulk_create_users_handler(self, request: web.Request) -> web.Response:
+        """Create multiple users at once (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        data = await request.json()
+        users_data = data.get("users", [])
+        
+        if not users_data:
+            return web.json_response({"error": "users array required"}, status=400)
+        
+        results = self.user_store.bulk_create_users(users_data)
+        
+        success_count = sum(1 for _, err in results if err is None)
+        
+        return web.json_response({
+            "total": len(results),
+            "success": success_count,
+            "failed": len(results) - success_count,
+            "results": [
+                {"user_id": uid, "success": err is None, "error": err}
+                for uid, err in results
+            ],
+        })
+    
+    async def _admin_list_users_handler(self, request: web.Request) -> web.Response:
+        """List all users (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        include_inactive = request.query.get("include_inactive", "false").lower() == "true"
+        users = self.user_store.list_users(include_inactive=include_inactive)
+        
+        return web.json_response({
+            "users": [u.to_dict() for u in users],
+            "total": len(users),
+        })
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Admin Analytics Handlers
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    async def _admin_trades_handler(self, request: web.Request) -> web.Response:
+        """Export all trades (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        market_id = request.query.get("market_id")
+        include_user_ids = request.query.get("include_user_ids", "true").lower() == "true"
+        
+        trades = self.analytics.export_all_trades(
+            market_id=market_id,
+            include_user_ids=include_user_ids,
+        )
+        
+        return web.json_response({
+            "trades": trades,
+            "total": len(trades),
+        })
+    
+    async def _admin_user_analysis_handler(self, request: web.Request) -> web.Response:
+        """Get detailed trade analysis for a user (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        user_id = request.match_info["user_id"]
+        market_id = request.query.get("market_id")
+        
+        analysis = self.analytics.get_user_trade_analysis(user_id, market_id)
+        
+        return web.json_response(analysis.to_dict())
+    
+    async def _admin_market_analysis_handler(self, request: web.Request) -> web.Response:
+        """Get detailed analysis for a market (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        market_id = request.match_info["market_id"]
+        
+        analysis = self.analytics.get_market_analysis(market_id)
+        
+        return web.json_response(analysis.to_dict())
+    
+    async def _admin_leaderboard_handler(self, request: web.Request) -> web.Response:
+        """Get the trading leaderboard (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        market_id = request.query.get("market_id")
+        sort_by = request.query.get("sort_by", "realized_pnl")
+        limit = int(request.query.get("limit", 100))
+        
+        # Get user display names
+        user_names = {u.user_id: u.display_name for u in self.user_store.list_users()}
+        
+        leaderboard = self.analytics.get_leaderboard(
+            market_id=market_id,
+            sort_by=sort_by,
+            limit=limit,
+            user_names=user_names,
+        )
+        
+        return web.json_response({
+            "leaderboard": [e.to_dict() for e in leaderboard],
+            "market_id": market_id,
+            "sort_by": sort_by,
+        })
+    
+    async def _admin_anomalies_handler(self, request: web.Request) -> web.Response:
+        """Detect trading anomalies (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        anomalies = self.analytics.detect_anomalies()
+        
+        return web.json_response({
+            "anomalies": anomalies,
+            "total": len(anomalies),
         })
     
     # ─────────────────────────────────────────────────────────────────────────

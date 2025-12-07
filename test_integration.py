@@ -34,12 +34,14 @@ class TestTrader:
     fills: list = field(default_factory=list)
     positions: dict = field(default_factory=dict)  # market_id -> position
     is_connected: bool = False
+    password: str = "testpass123"  # Default test password
     
     async def login(self):
         """Login and get session."""
         self.session = aiohttp.ClientSession()
         async with self.session.post(f"{BASE_URL}/auth/login", json={
-            "user_id": self.user_id
+            "user_id": self.user_id,
+            "password": self.password
         }) as resp:
             if resp.status != 200:
                 raise Exception(f"Login failed for {self.user_id}: {await resp.text()}")
@@ -202,6 +204,17 @@ class IntegrationTestSuite:
     async def create_trader(self, user_id: str) -> TestTrader:
         """Create and login a trader."""
         trader = TestTrader(user_id=user_id)
+        
+        # Create user in user store first
+        try:
+            self.server.user_store.create_user(
+                user_id=user_id,
+                password=trader.password,
+                display_name=user_id,
+            )
+        except ValueError:
+            pass  # User might already exist
+        
         await trader.login()
         await trader.connect_ws()
         self.traders[user_id] = trader
@@ -814,6 +827,12 @@ class IntegrationTestSuite:
         self.record_test("Audit has events", len(result["data"]["events"]) > 0)
         
         # Ban user
+        # Create user first
+        try:
+            self.server.user_store.create_user("banned_user", "testpass123", "Banned User")
+        except ValueError:
+            pass
+        
         result = await self.admin_request("POST", "/admin/ban", {
             "user_id": "banned_user",
             "reason": "Test ban"
@@ -822,8 +841,11 @@ class IntegrationTestSuite:
         
         # Verify banned user can't login
         async with aiohttp.ClientSession() as session:
-            async with session.post(f"{BASE_URL}/auth/login", json={"user_id": "banned_user"}) as resp:
-                self.record_test("Banned user login blocked", resp.status == 403)
+            async with session.post(f"{BASE_URL}/auth/login", json={
+                "user_id": "banned_user",
+                "password": "testpass123"
+            }) as resp:
+                self.record_test("Banned user login blocked", resp.status == 401)  # Returns 401 for invalid creds/banned
         
         # Unban user
         result = await self.admin_request("POST", "/admin/unban", {"user_id": "banned_user"})
@@ -831,7 +853,10 @@ class IntegrationTestSuite:
         
         # Verify unbanned user can login
         async with aiohttp.ClientSession() as session:
-            async with session.post(f"{BASE_URL}/auth/login", json={"user_id": "banned_user"}) as resp:
+            async with session.post(f"{BASE_URL}/auth/login", json={
+                "user_id": "banned_user",
+                "password": "testpass123"
+            }) as resp:
                 self.record_test("Unbanned user can login", resp.status == 200)
         
         # Unauthorized access
@@ -1036,6 +1061,17 @@ class IntegrationTestSuite:
         print("=" * 60)
         
         NUM_CONCURRENT = 20
+        
+        # Create users first
+        for i in range(NUM_CONCURRENT):
+            try:
+                self.server.user_store.create_user(
+                    f"concurrent_{i}",
+                    "testpass123",
+                    f"Concurrent User {i}"
+                )
+            except ValueError:
+                pass
         
         # Create many traders simultaneously
         async def create_and_trade(user_id: str):
