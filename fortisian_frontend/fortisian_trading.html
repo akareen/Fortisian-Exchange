@@ -140,7 +140,7 @@ const AppContext=createContext(null);
 const initialState={
   isLoggedIn:false,userId:'',displayName:'',isAdmin:false,
   wsStatus:'disconnected',latency:null,
-  currentMarket:'AAPL',marketStatus:'active',availableMarkets:['AAPL','BTCUSD','GOLD'],
+  currentMarket:'AAPL',marketStatus:'active',availableMarkets:['AAPL','BTCUSD','GOLD'],marketInfo:{},
   bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,bookStats:{bidLevels:0,askLevels:0,bidVolume:0,askVolume:0},
   openOrders:[],position:{net_qty:0,realized_pnl:'0',total_bought:0,total_sold:0,trade_count:0},
   recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0,
@@ -155,6 +155,7 @@ function reducer(state,action){
     case'SET_WS_STATUS':return{...state,wsStatus:action.payload};
     case'SET_LATENCY':return{...state,latency:action.payload};
     case'SET_MARKET':return{...state,currentMarket:action.payload,bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,openOrders:[],recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0};
+    case'SET_MARKET_INFO':return{...state,marketInfo:{...state.marketInfo,[action.payload.marketId]:{title:action.payload.title,description:action.payload.description}}};
     case 'BOOK_SNAPSHOT': {
       const bids = {};
       const asks = {};
@@ -223,7 +224,25 @@ function reducer(state,action){
         let bv=0,av=0;
         Object.values(ub).forEach(b=>bv+=b.qty);
         Object.values(ua).forEach(a=>av+=a.qty);
-        return{...state,bids:ub,asks:ua,sequence:action.payload.sequence,bestBid:action.payload.best_bid,bestAsk:action.payload.best_ask,bookStats:{bidLevels:Object.keys(ub).length,askLevels:Object.keys(ua).length,bidVolume:bv,askVolume:av}};
+        // Recalculate spread from best_bid and best_ask
+        let bestBid=action.payload.best_bid||state.bestBid;
+        let bestAsk=action.payload.best_ask||state.bestAsk;
+        // If not in payload, calculate from current book
+        if(!bestBid&&Object.keys(ub).length>0){
+          bestBid=Math.max(...Object.keys(ub).map(p=>parseFloat(p))).toString();
+        }
+        if(!bestAsk&&Object.keys(ua).length>0){
+          bestAsk=Math.min(...Object.keys(ua).map(p=>parseFloat(p))).toString();
+        }
+        let spread=null;
+        if(bestBid&&bestAsk){
+          const bid=parseFloat(bestBid);
+          const ask=parseFloat(bestAsk);
+          if(!isNaN(bid)&&!isNaN(ask)){
+            spread=(ask-bid).toFixed(2);
+          }
+        }
+        return{...state,bids:ub,asks:ua,sequence:action.payload.sequence,bestBid,bestAsk,spread,bookStats:{bidLevels:Object.keys(ub).length,askLevels:Object.keys(ua).length,bidVolume:bv,askVolume:av}};
       }
       return state;
     }
@@ -286,7 +305,13 @@ class WSManager{
       case'orders':this.dispatch({type:'SET_ORDERS',payload:(data.orders||[]).map(o=>({orderId:o.order_id,marketId:o.market_id,side:o.side,price:o.price,qty:o.qty,remainingQty:o.remaining_qty,timeInForce:o.time_in_force}))});break;
       case'position':this.dispatch({type:'SET_POSITION',payload:data.position||data});break;
       case'market_status':case'market_status_changed':this.dispatch({type:'SET_MARKET_STATUS',payload:data.new_status||data.status});break;
-      case'subscribed':this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Subscribed to ${data.market_id}`,type:'info',duration:2000}});break;
+      case'subscribed':{
+        this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Subscribed to ${data.market_id}`,type:'info',duration:2000}});
+        if(data.market_title||data.market_description){
+          this.dispatch({type:'SET_MARKET_INFO',payload:{marketId:data.market_id,title:data.market_title,description:data.market_description}});
+        }
+        break;
+      }
       case'error':soundManager.playAlert('error');this.dispatch({type:'ADD_NOTIFICATION',payload:{message:data.message||'Error',type:'error',duration:5000}});break;
     }
   }
@@ -374,6 +399,12 @@ function Header(){
         <div className="flex items-center gap-1">
           {state.availableMarkets.map((m,i)=>(<button key={m} onClick={()=>switchMarket(m)} className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${state.currentMarket===m?'bg-bb-orange/20 text-bb-orange border border-bb-orange/30':'text-bb-muted hover:text-bb-text hover:bg-bb-panelHover border border-transparent'}`}>{m}</button>))}
         </div>
+        {state.marketInfo[state.currentMarket]&&(
+          <div className="flex flex-col">
+            <div className="text-bb-white text-sm font-medium">{state.marketInfo[state.currentMarket].title||state.currentMarket}</div>
+            {state.marketInfo[state.currentMarket].description&&<div className="text-bb-muted text-xs">{state.marketInfo[state.currentMarket].description}</div>}
+          </div>
+        )}
         <div className="flex items-center gap-2 px-3 py-1 rounded bg-bb-bg/50">
           <div className={`status-dot ${state.wsStatus}`}/>
           <span className="text-xs text-bb-muted uppercase">{state.wsStatus}</span>

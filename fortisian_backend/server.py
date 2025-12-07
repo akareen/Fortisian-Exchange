@@ -849,8 +849,12 @@ class TradingServer:
             self._market_subscribers[market_id] = set()
         self._market_subscribers[market_id].add(session.user_id)
         
-        # Send subscription confirmation
-        await self._send(session, make_response(MessageType.SUBSCRIBED, {"market_id": market_id}, request_id))
+        # Send subscription confirmation with market info
+        await self._send(session, make_response(MessageType.SUBSCRIBED, {
+            "market_id": market_id,
+            "market_title": market.title,
+            "market_description": market.config.description,
+        }, request_id))
         
         # Send current book snapshot from cache (no rate limit for initial subscribe)
         snapshot, _ = self.book_cache.get_book_snapshot(
