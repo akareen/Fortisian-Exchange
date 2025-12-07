@@ -19,14 +19,26 @@
         extend: {
           colors: {
             bb: {
-              bg:        '#0f0f0f',
-              bgDark:    '#0f0f0f',
-              panel:     '#0f0f0f',
-              panelHover:'#1c1c1c',
-              border: '#3c3c3c', borderLight: '#505050', orange: '#ff8c00', orangeHover: '#ffa033',
-              green: '#00d26a', greenBg: 'rgba(0,210,106,0.12)', red: '#ff4757', redBg: 'rgba(255,71,87,0.12)',
-              white: '#fff', text: '#e0e0e0', muted: '#888', mutedDark: '#666',
-              yellow: '#ffd700', yellowBg: 'rgba(255,215,0,0.12)', cyan: '#00bcd4', cyanBg: 'rgba(0,188,212,0.12)',
+              bg: '#0a0a0c',
+              bgDark: '#060608',
+              panel: '#101013',
+              panelHover: '#18181c',
+              border: '#2d2d30',
+              borderLight: '#3a3a3d',
+              orange: '#ff8c00',
+              orangeHover: '#ffa033',
+              green: '#00c26a',
+              greenBg: 'rgba(0,194,106,0.12)',
+              red: '#f74747',
+              redBg: 'rgba(247,71,71,0.12)',
+              white: '#fff',
+              text: '#d0d0d0',
+              muted: '#818181',
+              mutedDark: '#5c5c5c',
+              yellow: '#ffcc00',
+              yellowBg: 'rgba(255,204,0,0.12)',
+              cyan: '#00a0c6',
+              cyanBg: 'rgba(0,160,198,0.12)',
             }
           },
           fontFamily: { mono: ['IBM Plex Mono', 'Consolas', 'monospace'] },
@@ -101,7 +113,7 @@ const {useState,useEffect,useRef,useCallback,createContext,useContext,useMemo,us
 const CONFIG={
   API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
   WS_URL:window.location.hostname==='localhost'?'ws://localhost:8080/ws':`${window.location.protocol==='https:'?'wss:':'ws:'}//${window.location.hostname}:8080/ws`,
-  ADMIN_URL:'fortisian_admin_fixed.html',
+  ADMIN_URL:'fortisian_admin.html',
   RECONNECT_DELAYS:[500,1000,2000,4000,8000,15000,30000],
   PING_INTERVAL:25000,MAX_TRADES:200,MAX_PRICE_HISTORY:1000,BOOK_FLASH_DURATION:400,VERSION:'2.1.1'
 };

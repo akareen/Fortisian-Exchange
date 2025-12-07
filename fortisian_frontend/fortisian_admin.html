@@ -236,7 +236,7 @@ function LoginPage(){
             <button type="submit" disabled={state.loading||!uid||!pwd} className="w-full py-4 btn btn-primary">{state.loading?'Authenticating...':'Login to Admin'}</button>
           </form>
         </div>
-        <div className="text-center mt-6"><a href="fortisian_v2_fixed.html" className="text-bb-muted hover:text-bb-orange text-sm">← Back to Trading</a></div>
+        <div className="text-center mt-6"><a href="fortisian_trading.html" className="text-bb-muted hover:text-bb-orange text-sm">← Back to Trading</a></div>
       </div>
     </div>
   );
@@ -502,7 +502,7 @@ function Dashboard(){
           <div className="text-bb-yellow text-xs uppercase tracking-wider">Admin Dashboard</div>
         </div>
         <div className="flex items-center gap-4">
-          <a href="fortisian_v2_fixed.html" className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Home/>Trading</a>
+          <a href="fortisian_trading.html" className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Home/>Trading</a>
           <span className="text-bb-muted text-sm">Admin: <span className="text-bb-orange">{state.displayName}</span></span>
           <button onClick={logout} className="px-3 py-1.5 text-xs text-bb-muted hover:text-bb-red border border-bb-border hover:border-bb-red/50 rounded">LOGOUT</button>
         </div>
