@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fortisian Exchange</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <meta name="theme-color" content="#262626">
+  <meta name="theme-color" content="#0a0a0c">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="config-loader.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
@@ -25,8 +26,8 @@
               panelHover: '#18181c',
               border: '#2d2d30',
               borderLight: '#3a3a3d',
-              orange: '#ff8c00',
-              orangeHover: '#ffa033',
+              orange: '#ffa028',
+              orangeHover: '#ffb850',
               green: '#00c26a',
               greenBg: 'rgba(0,194,106,0.12)',
               red: '#f74747',
@@ -47,12 +48,12 @@
     }
   </script>
   <style>
-    :root { --bb-bg:#262626; --bb-panel:#0f0f0f; --bb-border:#3c3c3c; --bb-orange:#ff8c00; --bb-green:#00d26a; --bb-red:#ff4757; }
-    * { scrollbar-width:thin; scrollbar-color:#505050 #262626; }
+    :root { --bb-bg:#0a0a0c; --bb-panel:#101013; --bb-border:#2d2d30; --bb-orange:#ffa028; --bb-green:#00c26a; --bb-red:#f74747; }
+    * { scrollbar-width:thin; scrollbar-color:#3a3a3d #0a0a0c; }
     *::-webkit-scrollbar { width:6px; height:6px; }
-    *::-webkit-scrollbar-track { background:#262626; }
-    *::-webkit-scrollbar-thumb { background:#505050; border-radius:3px; }
-    html, body { background:#262626; overflow:hidden; }
+    *::-webkit-scrollbar-track { background:#0a0a0c; }
+    *::-webkit-scrollbar-thumb { background:#3a3a3d; border-radius:3px; }
+    html, body { background:#0a0a0c; overflow:hidden; }
     input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; }
     input[type="number"] { -moz-appearance:textfield; }
     .bid-bar { background:linear-gradient(90deg, rgba(0,210,106,0.3) var(--pct), transparent var(--pct)); }
@@ -68,10 +69,10 @@
     .ticker-anim { animation:ticker 0.3s ease-out; }
     .pulse { animation:pulse 1.5s infinite; }
     .panel { background:#0f0f0f; border:1px solid #3c3c3c; border-radius:4px; }
-    .panel-header { padding:10px 12px; border-bottom:1px solid #3c3c3c; background:linear-gradient(180deg,#242424,#0f0f0f); }
-    .panel-title { color:#ff8c00; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; }
-    .input-field { background:transparent; border:1px solid #505050; border-radius:3px; color:#ff8c00; font-family:'IBM Plex Mono',monospace; transition:all 0.15s; }
-    .input-field:focus { outline:none; border-color:#ff8c00; box-shadow:0 0 0 2px rgba(255,140,0,0.15); }
+    .panel-header { padding:10px 12px; border-bottom:1px solid #2d2d30; background:linear-gradient(180deg,#18181c,#101013); }
+    .panel-title { color:#ffa028; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; }
+    .input-field { background:transparent; border:1px solid #505050; border-radius:3px; color:#ffa028; font-family:'IBM Plex Mono',monospace; transition:all 0.15s; }
+    .input-field:focus { outline:none; border-color:#ffa028; box-shadow:0 0 0 2px rgba(255,160,40,0.15); }
     .input-field::placeholder { color:#666; }
     .btn { font-weight:600; font-size:12px; letter-spacing:0.05em; border-radius:3px; transition:all 0.15s; text-transform:uppercase; }
     .btn:active:not(:disabled) { transform:scale(0.98); }
@@ -80,10 +81,10 @@
     .btn-sell { background:linear-gradient(180deg,#e8404f,#cc3945); color:#fff; box-shadow:0 2px 4px rgba(204,57,69,0.3); }
     .btn-sell:hover:not(:disabled) { background:linear-gradient(180deg,#ff4757,#e8404f); }
     .btn:disabled { opacity:0.5; cursor:not-allowed; }
-    .level-row:hover { background:rgba(255,140,0,0.08); cursor:pointer; }
+    .level-row:hover { background:rgba(255,160,40,0.08); cursor:pointer; }
     .best-bid { background:linear-gradient(90deg,rgba(0,210,106,0.15),transparent); }
     .best-ask { background:linear-gradient(270deg,rgba(255,71,87,0.15),transparent); }
-    .order-card { background:#262626; border:1px solid #3c3c3c; border-radius:3px; transition:all 0.15s; }
+    .order-card { background:#101013; border:1px solid #2d2d30; border-radius:3px; transition:all 0.15s; }
     .order-card:hover { border-color:#505050; background:#2a2a2a; }
     .order-card.buy { border-left:2px solid #00d26a; }
     .order-card.sell { border-left:2px solid #ff4757; }
@@ -92,7 +93,7 @@
     .notification { backdrop-filter:blur(8px); border-left:3px solid; border-radius:4px; }
     .notification.success { border-color:#00d26a; background:rgba(0,210,106,0.15); }
     .notification.error { border-color:#ff4757; background:rgba(255,71,87,0.15); }
-    .notification.info { border-color:#ff8c00; background:rgba(255,140,0,0.15); }
+    .notification.info { border-color:#ffa028; background:rgba(255,160,40,0.15); }
     .status-dot { width:8px; height:8px; border-radius:50%; }
     .status-dot.connected { background:#00d26a; box-shadow:0 0 6px #00d26a; }
     .status-dot.connecting, .status-dot.reconnecting { background:#ffd700; animation:pulse 1.5s infinite; }
@@ -101,7 +102,7 @@
     .dropdown { position:relative; }
     .dropdown-menu { position:absolute; top:100%; right:0; margin-top:4px; background:#0f0f0f; border:1px solid #3c3c3c; border-radius:4px; min-width:160px; z-index:50; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
     .dropdown-item { display:block; padding:8px 12px; font-size:12px; color:#888; transition:all 0.15s; }
-    .dropdown-item:hover { background:#2a2a2a; color:#ff8c00; }
+    .dropdown-item:hover { background:#18181c; color:#ffa028; }
     .dropdown-divider { height:1px; background:#3c3c3c; margin:4px 0; }
   </style>
 </head>
@@ -110,13 +111,27 @@
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,createContext,useContext,useMemo,useReducer}=React;
 
-const CONFIG={
+// Load config asynchronously - will be set after config loads
+let CONFIG={
   API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
   WS_URL:window.location.hostname==='localhost'?'ws://localhost:8080/ws':`${window.location.protocol==='https:'?'wss:':'ws:'}//${window.location.hostname}:8080/ws`,
   ADMIN_URL:'fortisian_admin.html',
   RECONNECT_DELAYS:[500,1000,2000,4000,8000,15000,30000],
   PING_INTERVAL:25000,MAX_TRADES:200,MAX_PRICE_HISTORY:1000,BOOK_FLASH_DURATION:400,VERSION:'2.1.1'
 };
+
+// Load config from file
+(async()=>{
+  try{
+    await window.configLoader?.load();
+    const frontendConfig=window.configLoader?.getFrontendConfig();
+    if(frontendConfig){
+      CONFIG={...CONFIG,...frontendConfig};
+    }
+  }catch(e){
+    console.warn('Failed to load config, using defaults:',e);
+  }
+})();
 
 // Keep all values as strings until display
 const formatPrice=(p)=>{if(p===null||p===undefined||p==='--')return'--';const s=typeof p==='string'?p:String(p);const n=parseFloat(s);return isNaN(n)?'--':n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
@@ -393,7 +408,7 @@ function LoginPage(){
 function Header(){
   const{state,logout,switchMarket,toggleSound,toggleUserMenu}=useContext(AppContext);
   return(
-    <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#242424,#0f0f0f)'}}>
+    <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#18181c,#101013)'}}>
       <div className="flex items-center gap-5">
         <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
         <div className="flex items-center gap-1">
@@ -577,7 +592,7 @@ function PriceChart(){
   const{state}=useContext(AppContext);
   const canvasRef=useRef(null);
   const chartRef=useRef(null);
-  useEffect(()=>{if(!canvasRef.current)return;if(chartRef.current)chartRef.current.destroy();const ctx=canvasRef.current.getContext('2d');const data=state.priceHistory.map(p=>({x:p.time,y:p.price}));const gradient=ctx.createLinearGradient(0,0,0,200);gradient.addColorStop(0,'rgba(255,140,0,0.2)');gradient.addColorStop(1,'rgba(255,140,0,0)');chartRef.current=new Chart(ctx,{type:'line',data:{datasets:[{label:'Price',data,borderColor:'#ff8c00',backgroundColor:gradient,borderWidth:2,fill:true,tension:0.2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#ff8c00',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#0f0f0f',borderColor:'#3c3c3c',borderWidth:1,titleColor:'#ff8c00',bodyColor:'#e0e0e0',titleFont:{family:'IBM Plex Mono',size:10},bodyFont:{family:'IBM Plex Mono',size:12},padding:10,cornerRadius:4,displayColors:false,callbacks:{title:(i)=>i.length?formatTime(i[0].raw.x):'',label:(i)=>`$${i.raw.y.toFixed(2)}`}}},scales:{x:{type:'time',time:{displayFormats:{second:'HH:mm:ss',minute:'HH:mm'}},grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},maxRotation:0}},y:{position:'right',grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},callback:(v)=>'$'+v.toFixed(2)}}}}});return()=>chartRef.current?.destroy();},[state.priceHistory]);
+  useEffect(()=>{if(!canvasRef.current)return;if(chartRef.current)chartRef.current.destroy();const ctx=canvasRef.current.getContext('2d');const data=state.priceHistory.map(p=>({x:p.time,y:p.price}));const gradient=ctx.createLinearGradient(0,0,0,200);gradient.addColorStop(0,'rgba(255,160,40,0.2)');gradient.addColorStop(1,'rgba(255,160,40,0)');chartRef.current=new Chart(ctx,{type:'line',data:{datasets:[{label:'Price',data,borderColor:'#ffa028',backgroundColor:gradient,borderWidth:2,fill:true,tension:0.2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#ffa028',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#101013',borderColor:'#2d2d30',borderWidth:1,titleColor:'#ffa028',bodyColor:'#d0d0d0',titleFont:{family:'IBM Plex Mono',size:10},bodyFont:{family:'IBM Plex Mono',size:12},padding:10,cornerRadius:4,displayColors:false,callbacks:{title:(i)=>i.length?formatTime(i[0].raw.x):'',label:(i)=>`$${i.raw.y.toFixed(2)}`}}},scales:{x:{type:'time',time:{displayFormats:{second:'HH:mm:ss',minute:'HH:mm'}},grid:{color:'rgba(45,45,48,0.3)',drawBorder:false},ticks:{color:'#818181',font:{family:'IBM Plex Mono',size:9},maxRotation:0}},y:{position:'right',grid:{color:'rgba(45,45,48,0.3)',drawBorder:false},ticks:{color:'#818181',font:{family:'IBM Plex Mono',size:9},callback:(v)=>'$'+v.toFixed(2)}}}}});return()=>chartRef.current?.destroy();},[state.priceHistory]);
   return(
     <div className="panel h-full flex flex-col">
       <div className="panel-header"><span className="panel-title">Price Chart</span></div>

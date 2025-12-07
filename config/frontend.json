@@ -1,0 +1,18 @@
+{
+  "api_url": {
+    "development": "http://localhost:8080",
+    "production": "${window.location.protocol}//${window.location.hostname}:8080"
+  },
+  "ws_url": {
+    "development": "ws://localhost:8080/ws",
+    "production": "${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080/ws"
+  },
+  "admin_url": "fortisian_admin.html",
+  "reconnect_delays": [500, 1000, 2000, 4000, 8000, 15000, 30000],
+  "ping_interval": 25000,
+  "max_trades": 200,
+  "max_price_history": 1000,
+  "book_flash_duration": 400,
+  "version": "2.1.1"
+}
+

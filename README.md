@@ -2,7 +2,9 @@
 
 A complete trading exchange system with a matching engine and Bloomberg-style frontend interface. Built for educational purposes, classroom trading games, and algorithmic trading simulations.
 
-![Client Page](assets/exchange_client_image.png)
+![Trading Interface](assets/exchange_client_image.png)
+
+![Admin Dashboard](assets/admin_client_image.png)
 
 ## Table of Contents
 
@@ -258,9 +260,19 @@ serve -s fortisian_frontend -l 3000
 
 ## Configuration
 
+### Configuration Files
+
+All configuration is now managed through JSON files in the `config/` folder:
+
+- **`config/colors.json`**: Color scheme for the UI (shared by frontend)
+- **`config/frontend.json`**: Frontend settings (API URLs, timeouts, etc.)
+- **`config/backend.json`**: Backend server settings (ports, rate limits, markets)
+
+The frontend automatically loads `config/colors.json` and `config/frontend.json` from the `fortisian_frontend/config/` folder. The backend loads from `config/backend.json` at the project root.
+
 ### Backend Configuration
 
-Edit `server.py` or pass command-line arguments:
+Edit `config/backend.json` or pass command-line arguments (which override config):
 
 ```bash
 python server.py \
@@ -269,44 +281,86 @@ python server.py \
   --admin-token "YourSecretToken"
 ```
 
-**ServerConfig** (in `server.py`):
-- `host`: Bind address (default: `0.0.0.0`)
-- `port`: Port number (default: `8080`)
-- `session_secret`: Fernet key for session encryption (auto-generated)
-- `session_max_age`: Session TTL in seconds (default: 86400 = 24 hours)
-- `rate_limit_orders_per_second`: Orders per second limit (default: 2.0)
-- `rate_limit_orders_per_minute`: Orders per minute limit (default: 30)
-- `allowed_origins`: CORS allowed origins (default: `["*"]`)
-- `admin_token`: Admin API token (auto-generated)
+**backend.json structure:**
+```json
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "session_max_age": 86400,
+    "allowed_origins": ["*"],
+    "require_origin": false
+  },
+  "rate_limiting": {
+    "orders_per_second": 2.0,
+    "orders_per_minute": 30,
+    "burst": 5
+  },
+  "anomaly_detection": {
+    "window_size": 20,
+    "timing_threshold": 0.05
+  },
+  "book_cache": {
+    "requests_per_second": 10.0,
+    "requests_burst": 20,
+    "max_depth": 50,
+    "snapshot_interval": 5.0
+  },
+  "markets": [
+    {
+      "market_id": "AAPL",
+      "title": "Apple Inc.",
+      "description": "Tech giant stock",
+      "tick_size": "0.01",
+      "max_position": 1000
+    }
+  ]
+}
+```
+
+Command-line arguments override config file values.
 
 ### Frontend Configuration
 
-Edit `CONFIG` object in `fortisian_trading.html`:
+Edit `fortisian_frontend/config/frontend.json`:
 
-```javascript
-const CONFIG = {
-  API_URL: 'http://localhost:8080',
-  WS_URL: 'ws://localhost:8080/ws',
-  ADMIN_URL: 'fortisian_admin.html',
-  RECONNECT_DELAYS: [500, 1000, 2000, 4000, 8000, 15000, 30000],
-  PING_INTERVAL: 25000,
-  MAX_TRADES: 200,
-  MAX_PRICE_HISTORY: 1000,
-};
+```json
+{
+  "api_url": {
+    "development": "http://localhost:8080",
+    "production": "${window.location.protocol}//${window.location.hostname}:8080"
+  },
+  "ws_url": {
+    "development": "ws://localhost:8080/ws",
+    "production": "${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}:8080/ws"
+  },
+  "admin_url": "fortisian_admin.html",
+  "reconnect_delays": [500, 1000, 2000, 4000, 8000, 15000, 30000],
+  "ping_interval": 25000,
+  "max_trades": 200,
+  "max_price_history": 1000,
+  "book_flash_duration": 400,
+  "version": "2.1.1"
+}
 ```
 
-For production, use dynamic configuration:
+Edit `fortisian_frontend/config/colors.json` to customize the color scheme:
 
-```javascript
-const CONFIG = {
-  API_URL: window.location.hostname === 'localhost'
-    ? 'http://localhost:8080'
-    : `${window.location.protocol}//${window.location.hostname}/api`,
-  WS_URL: window.location.hostname === 'localhost'
-    ? 'ws://localhost:8080/ws'
-    : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.hostname}/ws`,
-};
+```json
+{
+  "bg": "#0a0a0c",
+  "bgDark": "#060608",
+  "panel": "#101013",
+  "panelHover": "#18181c",
+  "border": "#2d2d30",
+  "orange": "#ffa028",
+  "green": "#00c26a",
+  "red": "#f74747",
+  ...
+}
 ```
+
+The frontend automatically loads these configs on page load via `config-loader.js`. Configs are loaded asynchronously, so the page will work with defaults if configs are unavailable.
 
 ---
 

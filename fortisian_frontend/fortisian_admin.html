@@ -5,20 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Fortisian Admin Dashboard</title>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <meta name="theme-color" content="#262626">
+  <meta name="theme-color" content="#0a0a0c">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="config-loader.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            bb: { bg:'#262626',bgDark:'#1a1a1a',panel:'#1e1e1e',border:'#3c3c3c',borderLight:'#505050',orange:'#ff8c00',orangeHover:'#ffa033',green:'#00d26a',greenBg:'rgba(0,210,106,0.12)',red:'#ff4757',redBg:'rgba(255,71,87,0.12)',white:'#fff',text:'#e0e0e0',muted:'#888',mutedDark:'#666',yellow:'#ffd700',yellowBg:'rgba(255,215,0,0.12)',cyan:'#00bcd4',cyanBg:'rgba(0,188,212,0.12)',purple:'#9c27b0',purpleBg:'rgba(156,39,176,0.12)' }
+            bb: { bg:'#0a0a0c',bgDark:'#060608',panel:'#101013',panelHover:'#18181c',border:'#2d2d30',borderLight:'#3a3a3d',orange:'#ffa028',orangeHover:'#ffb850',green:'#00c26a',greenBg:'rgba(0,194,106,0.12)',red:'#f74747',redBg:'rgba(247,71,71,0.12)',white:'#fff',text:'#d0d0d0',muted:'#818181',mutedDark:'#5c5c5c',yellow:'#ffcc00',yellowBg:'rgba(255,204,0,0.12)',cyan:'#00a0c6',cyanBg:'rgba(0,160,198,0.12)',purple:'#9c27b0',purpleBg:'rgba(156,39,176,0.12)' }
           },
           fontFamily: { mono: ['IBM Plex Mono','monospace'] },
         }
@@ -26,16 +27,19 @@
     }
   </script>
   <style>
-    html,body{background:#262626;overflow-x:hidden;}
-    *{scrollbar-width:thin;scrollbar-color:#505050 #262626;}
-    .panel{background:#1e1e1e;border:1px solid #3c3c3c;border-radius:4px;}
-    .panel-header{padding:12px 16px;border-bottom:1px solid #3c3c3c;background:linear-gradient(180deg,#242424,#1e1e1e);}
-    .panel-title{color:#ff8c00;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.1em;}
-    .input-field{background:transparent;border:1px solid #505050;border-radius:3px;color:#ff8c00;font-family:'IBM Plex Mono',monospace;}
-    .input-field:focus{outline:none;border-color:#ff8c00;box-shadow:0 0 0 2px rgba(255,140,0,0.15);}
+    html,body{background:#0a0a0c;overflow-x:hidden;}
+    *{scrollbar-width:thin;scrollbar-color:#3a3a3d #0a0a0c;}
+    *::-webkit-scrollbar{width:6px;height:6px;}
+    *::-webkit-scrollbar-track{background:#0a0a0c;}
+    *::-webkit-scrollbar-thumb{background:#3a3a3d;border-radius:3px;}
+    .panel{background:#101013;border:1px solid #2d2d30;border-radius:4px;}
+    .panel-header{padding:12px 16px;border-bottom:1px solid #2d2d30;background:linear-gradient(180deg,#18181c,#101013);}
+    .panel-title{color:#ffa028;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.1em;}
+    .input-field{background:transparent;border:1px solid #3a3a3d;border-radius:3px;color:#ffa028;font-family:'IBM Plex Mono',monospace;}
+    .input-field:focus{outline:none;border-color:#ffa028;box-shadow:0 0 0 2px rgba(255,160,40,0.15);}
     .btn{font-weight:600;font-size:12px;letter-spacing:0.05em;border-radius:3px;transition:all 0.15s;text-transform:uppercase;}
-    .btn-primary{background:linear-gradient(180deg,#ff8c00,#cc7000);color:#1a1a1a;}
-    .btn-primary:hover{background:linear-gradient(180deg,#ffa033,#ff8c00);}
+    .btn-primary{background:linear-gradient(180deg,#ffa028,#cc8020);color:#060608;}
+    .btn-primary:hover{background:linear-gradient(180deg,#ffb850,#ffa028);}
     .btn-danger{background:linear-gradient(180deg,#e8404f,#cc3945);color:#fff;}
     .btn-danger:hover{background:linear-gradient(180deg,#ff4757,#e8404f);}
     .btn-success{background:linear-gradient(180deg,#00b858,#00a04d);color:#fff;}
@@ -44,17 +48,17 @@
     .status-dot{width:10px;height:10px;border-radius:50%;}
     .status-dot.online{background:#00d26a;box-shadow:0 0 8px #00d26a;}
     .status-dot.offline{background:#ff4757;}
-    .stat-card{background:#262626;border:1px solid #3c3c3c;border-radius:4px;padding:16px;}
-    .table-row:hover{background:rgba(255,140,0,0.05);}
+    .stat-card{background:#101013;border:1px solid #2d2d30;border-radius:4px;padding:16px;}
+    .table-row:hover{background:rgba(255,160,40,0.05);}
     .tab{padding:8px 16px;font-size:12px;border-bottom:2px solid transparent;transition:all 0.15s;}
-    .tab:hover{color:#ff8c00;}
-    .tab.active{color:#ff8c00;border-bottom-color:#ff8c00;}
+    .tab:hover{color:#ffa028;}
+    .tab.active{color:#ffa028;border-bottom-color:#ffa028;}
     @keyframes slideDown{0%{opacity:0;transform:translateY(-8px);}100%{opacity:1;transform:translateY(0);}}
     .slide-down{animation:slideDown 0.25s ease-out;}
     .notification{backdrop-filter:blur(8px);border-left:3px solid;border-radius:4px;}
     .notification.success{border-color:#00d26a;background:rgba(0,210,106,0.15);}
     .notification.error{border-color:#ff4757;background:rgba(255,71,87,0.15);}
-    .notification.info{border-color:#ff8c00;background:rgba(255,140,0,0.15);}
+    .notification.info{border-color:#ffa028;background:rgba(255,160,40,0.15);}
   </style>
 </head>
 <body class="bg-bb-bg text-bb-text font-mono antialiased">
@@ -62,10 +66,24 @@
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,createContext,useContext}=React;
 
-const CONFIG={
+// Load config asynchronously - will be set after config loads
+let CONFIG={
   API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
-  VERSION:'2.1.0'
+  VERSION:'2.1.1'
 };
+
+// Load config from file
+(async()=>{
+  try{
+    await window.configLoader?.load();
+    const frontendConfig=window.configLoader?.getFrontendConfig();
+    if(frontendConfig){
+      CONFIG={...CONFIG,API_URL:frontendConfig.API_URL||CONFIG.API_URL,VERSION:frontendConfig.VERSION||CONFIG.VERSION};
+    }
+  }catch(e){
+    console.warn('Failed to load config, using defaults:',e);
+  }
+})();
 
 const formatTime=(t)=>t?new Date(t).toLocaleTimeString('en-US',{hour12:false}):'--:--:--';
 const formatDateTime=(t)=>t?new Date(t).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}):'--';
@@ -526,7 +544,7 @@ function AnalyticsTab(){
           datasets:[{
             label:'Realized P&L',
             data:topUsers.map(u=>parseFloat(u.realized_pnl||0)),
-            backgroundColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'rgba(0,210,106,0.6)':'rgba(255,71,87,0.6)'),
+            backgroundColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'rgba(0,194,106,0.6)':'rgba(247,71,71,0.6)'),
             borderColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'#00d26a':'#ff4757'),
             borderWidth:1
           }]
@@ -534,7 +552,7 @@ function AnalyticsTab(){
         options:{
           responsive:true,
           maintainAspectRatio:false,
-          plugins:{legend:{display:false},title:{display:true,text:'User P&L Performance',color:'#ff8c00',font:{size:14,weight:'bold'}}},
+          plugins:{legend:{display:false},title:{display:true,text:'User P&L Performance',color:'#ffa028',font:{size:14,weight:'bold'}}},
           scales:{y:{ticks:{color:'#888',callback:function(v){return'$'+v.toFixed(2);}},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}
         }
       });
@@ -554,15 +572,15 @@ function AnalyticsTab(){
           datasets:[{
             label:'Total Volume',
             data:topUsers.map(u=>parseInt(u.total_volume||0,10)),
-            backgroundColor:'rgba(255,140,0,0.6)',
-            borderColor:'#ff8c00',
+            backgroundColor:'rgba(255,160,40,0.6)',
+            borderColor:'#ffa028',
             borderWidth:1
           }]
         },
         options:{
           responsive:true,
           maintainAspectRatio:false,
-          plugins:{legend:{display:false},title:{display:true,text:'Trading Volume by User',color:'#ff8c00',font:{size:14,weight:'bold'}}},
+          plugins:{legend:{display:false},title:{display:true,text:'Trading Volume by User',color:'#ffa028',font:{size:14,weight:'bold'}}},
           scales:{y:{ticks:{color:'#888',callback:function(v){return v.toLocaleString();}},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}
         }
       });
@@ -591,7 +609,7 @@ function AnalyticsTab(){
         options:{
           responsive:true,
           maintainAspectRatio:false,
-          plugins:{legend:{display:false},title:{display:true,text:'Number of Trades by User',color:'#ff8c00',font:{size:14,weight:'bold'}}},
+          plugins:{legend:{display:false},title:{display:true,text:'Number of Trades by User',color:'#ffa028',font:{size:14,weight:'bold'}}},
           scales:{y:{ticks:{color:'#888'},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}
         }
       });
@@ -790,7 +808,7 @@ function Dashboard(){
   ];
   return(
     <div className="min-h-screen bg-bb-bg">
-      <header className="px-6 py-3 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#242424,#1e1e1e)'}}>
+      <header className="px-6 py-3 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#18181c,#101013)'}}>
         <div className="flex items-center gap-6">
           <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
           <div className="text-bb-yellow text-xs uppercase tracking-wider">Admin Dashboard</div>

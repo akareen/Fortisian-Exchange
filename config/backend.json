@@ -1,0 +1,49 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "session_max_age": 86400,
+    "allowed_origins": ["*"],
+    "require_origin": false
+  },
+  "rate_limiting": {
+    "orders_per_second": 2.0,
+    "orders_per_minute": 30,
+    "burst": 5
+  },
+  "anomaly_detection": {
+    "window_size": 20,
+    "timing_threshold": 0.05
+  },
+  "book_cache": {
+    "requests_per_second": 10.0,
+    "requests_burst": 20,
+    "max_depth": 50,
+    "snapshot_interval": 5.0
+  },
+  "markets": [
+    {
+      "market_id": "AAPL",
+      "title": "Apple Inc.",
+      "description": "Tech giant stock",
+      "tick_size": "0.01",
+      "max_position": 1000
+    },
+    {
+      "market_id": "BTCUSD",
+      "title": "Bitcoin/USD",
+      "description": "Cryptocurrency pair",
+      "tick_size": "0.01",
+      "max_position": 10
+    },
+    {
+      "market_id": "GOLD",
+      "title": "Gold Futures",
+      "description": "Precious metal",
+      "tick_size": "0.10",
+      "lot_size": 10,
+      "max_position": 500
+    }
+  ]
+}
+

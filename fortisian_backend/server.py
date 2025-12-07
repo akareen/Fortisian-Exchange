@@ -59,6 +59,7 @@ from book_cache import BookCacheManager, BookCacheConfig
 from auth import UserStore, SessionManager as AuthSessionManager, create_auth_system
 from sweep_orders import SweepOrderManager, SweepAllocation
 from analytics import AdminAnalytics
+from config_loader import get_config_loader, BookCacheConfigData
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1564,34 +1565,21 @@ class TradingServer:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_demo_exchange() -> Exchange:
-    """Create a demo exchange with sample markets."""
+    """Create a demo exchange with markets from config."""
     exchange = Exchange()
+    config_loader = get_config_loader()
+    markets_config = config_loader.get_markets_config()
     
-    # Create some markets
-    exchange.create_market(
-        "AAPL",
-        "Apple Inc.",
-        description="Tech giant stock",
-        tick_size="0.01",
-        max_position=1000,
-    )
-    
-    exchange.create_market(
-        "BTCUSD",
-        "Bitcoin/USD",
-        description="Cryptocurrency pair",
-        tick_size="0.01",
-        max_position=10,
-    )
-    
-    exchange.create_market(
-        "GOLD",
-        "Gold Futures",
-        description="Precious metal",
-        tick_size="0.10",
-        lot_size=10,
-        max_position=500,
-    )
+    # Create markets from config
+    for market_config in markets_config:
+        exchange.create_market(
+            market_config.market_id,
+            market_config.title,
+            description=market_config.description,
+            tick_size=market_config.tick_size,
+            lot_size=market_config.lot_size,
+            max_position=market_config.max_position,
+        )
     
     return exchange
 
@@ -1625,19 +1613,42 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     
+    # Load configuration
+    config_loader = get_config_loader()
+    server_config_data = config_loader.get_server_config()
+    rate_limit_config = config_loader.get_rate_limit_config()
+    anomaly_config = config_loader.get_anomaly_config()
+    book_cache_config_data = config_loader.get_book_cache_config()
+    
     # Create exchange
     exchange = create_demo_exchange()
     
-    # Create server config
+    # Create server config from loaded config
     config = ServerConfig(
-        host=args.host,
-        port=args.port,
+        host=args.host or server_config_data.host,
+        port=args.port or server_config_data.port,
+        session_max_age=server_config_data.session_max_age,
+        allowed_origins=server_config_data.allowed_origins,
+        require_origin=server_config_data.require_origin,
+        rate_limit_orders_per_second=rate_limit_config.orders_per_second,
+        rate_limit_orders_per_minute=rate_limit_config.orders_per_minute,
+        rate_limit_burst=rate_limit_config.burst,
+        anomaly_window_size=anomaly_config.window_size,
+        anomaly_timing_threshold=anomaly_config.timing_threshold,
     )
     if args.admin_token:
         config.admin_token = args.admin_token
     
+    # Create book cache config
+    book_cache_config = BookCacheConfig(
+        book_requests_per_second=book_cache_config_data.requests_per_second,
+        book_requests_burst=book_cache_config_data.requests_burst,
+        max_depth=book_cache_config_data.max_depth,
+        snapshot_interval=book_cache_config_data.snapshot_interval,
+    )
+    
     # Create and run server
-    server = TradingServer(exchange, config)
+    server = TradingServer(exchange, config, book_cache_config=book_cache_config)
     
     # Start all markets
     exchange.start_all_markets()
