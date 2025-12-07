@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fortisian Exchange - Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bloomberg: {
+              bg: 'rgb(38, 38, 38)',
+              surface: 'rgb(38, 38, 38)',
+              panel: 'rgb(30, 30, 30)',
+              border: 'rgb(60, 60, 60)',
+              borderLight: 'rgb(80, 80, 80)',
+              orange: '#ff8c00',
+              orangeDim: '#cc7000',
+              green: '#00d26a',
+              greenDim: '#00a854',
+              red: '#ff4757',
+              redDim: '#cc3945',
+              white: '#ffffff',
+              muted: '#888888',
+              mutedDark: '#666666',
+              yellow: '#ffd700',
+              cyan: '#00bcd4',
+            }
+          },
+          fontFamily: {
+            mono: ['IBM Plex Mono', 'Consolas', 'Monaco', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgb(80, 80, 80) rgb(38, 38, 38);
+    }
+    *::-webkit-scrollbar { width: 8px; height: 8px; }
+    *::-webkit-scrollbar-track { background: rgb(38, 38, 38); }
+    *::-webkit-scrollbar-thumb { background: rgb(80, 80, 80); border-radius: 4px; }
+    
+    html, body { background: rgb(38, 38, 38); }
+    
+    .bid-bar {
+      background: linear-gradient(90deg, rgba(0, 210, 106, 0.25) var(--pct), transparent var(--pct));
+    }
+    .ask-bar {
+      background: linear-gradient(270deg, rgba(255, 71, 87, 0.25) var(--pct), transparent var(--pct));
+    }
+    
+    .panel-border {
+      border: 1px solid rgb(60, 60, 60);
+    }
+    
+    .input-style {
+      background: transparent;
+      border: 1px solid rgb(80, 80, 80);
+      color: #ff8c00;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .input-style:focus {
+      outline: none;
+      border-color: #ff8c00;
+    }
+    
+    .btn-buy {
+      background: rgb(0, 168, 84);
+      color: white;
+      font-weight: 600;
+    }
+    .btn-buy:hover { background: rgb(0, 210, 106); }
+    
+    .btn-sell {
+      background: rgb(204, 57, 69);
+      color: white;
+      font-weight: 600;
+    }
+    .btn-sell:hover { background: rgb(255, 71, 87); }
+    
+    .level-row:hover { background: rgba(255, 140, 0, 0.08); }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .pulse { animation: pulse 1.5s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-bloomberg-bg text-bloomberg-orange font-mono antialiased">
+
+  <!-- Demo Badge -->
+  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-bloomberg-yellow text-bloomberg-bg px-4 py-1 text-xs font-bold tracking-wider">
+    DEMO MODE - STATIC DATA
+  </div>
+
+  <div class="min-h-screen flex flex-col">
+    
+    <!-- Header -->
+    <header class="panel-border border-t-0 border-x-0 px-4 py-2 flex items-center justify-between" style="background: rgb(30, 30, 30)">
+      <div class="flex items-center gap-6">
+        <div class="text-bloomberg-orange font-bold text-lg tracking-wider">FORTISIAN</div>
+        
+        <select class="input-style px-3 py-1.5 text-sm cursor-pointer">
+          <option>AAPL</option>
+          <option>BTCUSD</option>
+          <option>GOLD</option>
+        </select>
+        
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-bloomberg-green pulse"></div>
+          <span class="text-xs text-bloomberg-muted uppercase">CONNECTED</span>
+        </div>
+        
+        <div class="text-xs px-2 py-0.5 uppercase tracking-wider bg-bloomberg-green/20 text-bloomberg-green border border-bloomberg-green/30">
+          ACTIVE
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-4">
+        <div class="text-sm">
+          <span class="text-bloomberg-muted">User:</span>
+          <span class="text-bloomberg-orange ml-2">Demo User</span>
+          <span class="ml-2 text-xs bg-bloomberg-orange/20 text-bloomberg-orange px-1.5 py-0.5 border border-bloomberg-orange/30">ADMIN</span>
+        </div>
+        <button class="px-3 py-1 text-xs text-bloomberg-muted hover:text-bloomberg-orange border border-bloomberg-border hover:border-bloomberg-orange transition-colors">
+          LOGOUT
+        </button>
+      </div>
+    </header>
+    
+    <!-- Market Banner -->
+    <div class="panel-border border-t-0 px-4 py-3 flex items-center justify-between" style="background: rgb(30, 30, 30)">
+      <div class="flex items-center gap-8">
+        <div>
+          <div class="text-2xl font-bold text-bloomberg-white tracking-wide">AAPL</div>
+        </div>
+        
+        <div class="border-l border-bloomberg-border pl-6">
+          <div class="text-xs text-bloomberg-muted uppercase">Last</div>
+          <div class="text-xl font-bold text-bloomberg-green">185.42</div>
+        </div>
+        
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Change</div>
+          <div class="text-lg font-medium text-bloomberg-green">+2.15</div>
+        </div>
+        
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Time</div>
+          <div class="text-sm text-bloomberg-orange">14:32:15</div>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-8 text-sm">
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Bid</div>
+          <div class="text-bloomberg-green font-medium">185.40</div>
+        </div>
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Ask</div>
+          <div class="text-bloomberg-red font-medium">185.45</div>
+        </div>
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Spread</div>
+          <div class="text-bloomberg-orange font-medium">0.05</div>
+        </div>
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Open Int</div>
+          <div class="text-bloomberg-cyan font-medium">15,420</div>
+        </div>
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Volume</div>
+          <div class="text-bloomberg-cyan font-medium">8,750</div>
+        </div>
+        <div>
+          <div class="text-xs text-bloomberg-muted uppercase">Seq</div>
+          <div class="text-bloomberg-muted font-medium">1,247</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Main Content -->
+    <main class="flex-1 p-2 grid grid-cols-12 gap-2" style="height: calc(100vh - 110px)">
+      
+      <!-- Order Book -->
+      <div class="col-span-4 panel-border flex flex-col" style="background: rgb(30, 30, 30); height: calc(100vh - 130px)">
+        <div class="px-3 py-2 border-b border-bloomberg-border flex items-center justify-between">
+          <span class="text-bloomberg-orange font-bold text-sm uppercase tracking-wider">Order Book</span>
+          <span class="text-xs text-bloomberg-muted">Spread: <span class="text-bloomberg-green">0.05</span></span>
+        </div>
+        
+        <div class="grid grid-cols-3 px-3 py-1 text-xs text-bloomberg-muted uppercase border-b border-bloomberg-border bg-bloomberg-bg/50">
+          <div class="text-left">Bid</div>
+          <div class="text-center">Price</div>
+          <div class="text-right">Ask</div>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto">
+          <!-- Sample Order Book Levels -->
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 0%"></div>
+            <div class="text-center text-bloomberg-red font-bold">185.55</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2 font-bold" style="--pct: 45%">450</div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 0%"></div>
+            <div class="text-center text-bloomberg-red">185.50</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 80%">800</div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 0%"></div>
+            <div class="text-center text-bloomberg-red font-bold">185.45</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2 font-bold" style="--pct: 100%">1,000</div>
+          </div>
+          
+          <!-- Spread Row -->
+          <div class="grid grid-cols-3 px-3 py-1 text-xs bg-bloomberg-bg/30 border-y border-bloomberg-border/50">
+            <div></div>
+            <div class="text-center text-bloomberg-yellow">— SPREAD 0.05 —</div>
+            <div></div>
+          </div>
+          
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2 font-bold" style="--pct: 85%">850</div>
+            <div class="text-center text-bloomberg-green font-bold">185.40</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 60%">600</div>
+            <div class="text-center text-bloomberg-green">185.35</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 100%">1,000</div>
+            <div class="text-center text-bloomberg-green">185.30</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 45%">450</div>
+            <div class="text-center text-bloomberg-green">185.25</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 30%">300</div>
+            <div class="text-center text-bloomberg-green">185.20</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 20%">200</div>
+            <div class="text-center text-bloomberg-green">185.15</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 55%">550</div>
+            <div class="text-center text-bloomberg-green">185.10</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 70%">700</div>
+            <div class="text-center text-bloomberg-green">185.05</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-0.5 text-sm level-row">
+            <div class="text-left text-bloomberg-green bid-bar pr-2" style="--pct: 40%">400</div>
+            <div class="text-center text-bloomberg-green">185.00</div>
+            <div class="text-right text-bloomberg-red ask-bar pl-2" style="--pct: 0%"></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Center Column: Chart + Order Entry -->
+      <div class="col-span-4 flex flex-col gap-2">
+        
+        <!-- Price Chart -->
+        <div class="panel-border flex flex-col" style="background: rgb(30, 30, 30); height: 45%">
+          <div class="px-3 py-2 border-b border-bloomberg-border">
+            <span class="text-bloomberg-orange font-bold text-sm uppercase tracking-wider">Price Chart</span>
+          </div>
+          <div class="flex-1 p-2">
+            <canvas id="priceChart"></canvas>
+          </div>
+        </div>
+        
+        <!-- Order Entry -->
+        <div class="panel-border p-3" style="background: rgb(30, 30, 30)">
+          <div class="text-bloomberg-orange font-bold text-sm uppercase tracking-wider mb-3">Order Entry</div>
+          
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-xs text-bloomberg-muted uppercase mb-1">Price</label>
+              <input type="text" value="185.40" class="w-full px-2 py-1.5 input-style text-sm">
+            </div>
+            <div>
+              <label class="block text-xs text-bloomberg-muted uppercase mb-1">Quantity</label>
+              <input type="number" value="100" class="w-full px-2 py-1.5 input-style text-sm">
+            </div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="block text-xs text-bloomberg-muted uppercase mb-1">Time in Force</label>
+            <select class="w-full px-2 py-1.5 input-style text-sm cursor-pointer">
+              <option>GTC - Good Till Cancel</option>
+              <option>IOC - Immediate or Cancel</option>
+              <option>FOK - Fill or Kill</option>
+            </select>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-3">
+            <button class="py-2.5 btn-buy text-sm uppercase tracking-wider">Buy</button>
+            <button class="py-2.5 btn-sell text-sm uppercase tracking-wider">Sell</button>
+          </div>
+        </div>
+        
+        <!-- Position -->
+        <div class="panel-border p-3" style="background: rgb(30, 30, 30)">
+          <div class="text-bloomberg-orange font-bold text-sm uppercase tracking-wider mb-3">Position</div>
+          
+          <div class="space-y-2">
+            <div class="flex justify-between">
+              <span class="text-bloomberg-muted text-sm">Net Position</span>
+              <span class="font-bold text-bloomberg-green">+150</span>
+            </div>
+            
+            <div class="flex justify-between">
+              <span class="text-bloomberg-muted text-sm">Realized P&L</span>
+              <span class="font-bold text-bloomberg-green">+$425.00</span>
+            </div>
+            
+            <div class="border-t border-bloomberg-border pt-2 mt-2 space-y-1">
+              <div class="flex justify-between text-xs">
+                <span class="text-bloomberg-muted">Bought</span>
+                <span class="text-bloomberg-green">500</span>
+              </div>
+              <div class="flex justify-between text-xs">
+                <span class="text-bloomberg-muted">Sold</span>
+                <span class="text-bloomberg-red">350</span>
+              </div>
+              <div class="flex justify-between text-xs">
+                <span class="text-bloomberg-muted">Trades</span>
+                <span class="text-bloomberg-orange">12</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Admin Alerts -->
+        <div class="panel-border p-3" style="background: rgb(30, 30, 30)">
+          <div class="text-bloomberg-yellow font-bold text-sm uppercase tracking-wider mb-2">Admin Alerts</div>
+          <div class="space-y-1 max-h-32 overflow-y-auto">
+            <div class="text-xs p-2 bg-bloomberg-bg border border-bloomberg-border/50">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-bloomberg-green">ORDER ACCEPTED</span>
+                <span class="text-bloomberg-muted">14:32:15</span>
+              </div>
+              <div class="text-bloomberg-muted mt-1">User: student1 | BUY 100 @ 185.40</div>
+            </div>
+            <div class="text-xs p-2 bg-bloomberg-bg border border-bloomberg-border/50">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-bloomberg-cyan">ORDER FILLED</span>
+                <span class="text-bloomberg-muted">14:32:14</span>
+              </div>
+              <div class="text-bloomberg-muted mt-1">User: student2 | Fill: 50 @ 185.42</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Right Column: Orders + Trades -->
+      <div class="col-span-4 flex flex-col gap-2">
+        
+        <!-- Open Orders -->
+        <div class="panel-border p-3" style="background: rgb(30, 30, 30)">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-bloomberg-orange font-bold text-sm uppercase tracking-wider">Open Orders (3)</span>
+            <button class="text-xs px-2 py-1 text-bloomberg-red border border-bloomberg-red/50 hover:bg-bloomberg-red/10">Cancel All</button>
+          </div>
+          
+          <div class="space-y-1">
+            <div class="flex items-center justify-between py-1.5 px-2 bg-bloomberg-bg border border-bloomberg-border/50">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="font-bold text-bloomberg-green">BUY</span>
+                <span class="text-bloomberg-white">100</span>
+                <span class="text-bloomberg-muted">@</span>
+                <span class="text-bloomberg-orange">185.35</span>
+              </div>
+              <button class="text-bloomberg-red hover:bg-bloomberg-red/20 px-1.5 py-0.5">✕</button>
+            </div>
+            <div class="flex items-center justify-between py-1.5 px-2 bg-bloomberg-bg border border-bloomberg-border/50">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="font-bold text-bloomberg-green">BUY</span>
+                <span class="text-bloomberg-white">50</span>
+                <span class="text-bloomberg-muted">@</span>
+                <span class="text-bloomberg-orange">185.30</span>
+              </div>
+              <button class="text-bloomberg-red hover:bg-bloomberg-red/20 px-1.5 py-0.5">✕</button>
+            </div>
+            <div class="flex items-center justify-between py-1.5 px-2 bg-bloomberg-bg border border-bloomberg-border/50">
+              <div class="flex items-center gap-2 text-sm">
+                <span class="font-bold text-bloomberg-red">SELL</span>
+                <span class="text-bloomberg-white">75</span>
+                <span class="text-bloomberg-muted">@</span>
+                <span class="text-bloomberg-orange">185.50</span>
+              </div>
+              <button class="text-bloomberg-red hover:bg-bloomberg-red/20 px-1.5 py-0.5">✕</button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Recent Trades -->
+        <div class="panel-border flex-1 flex flex-col" style="background: rgb(30, 30, 30); min-height: 200px">
+          <div class="px-3 py-2 border-b border-bloomberg-border">
+            <span class="text-bloomberg-orange font-bold text-sm uppercase tracking-wider">Recent Trades</span>
+          </div>
+          
+          <div class="grid grid-cols-4 px-3 py-1 text-xs text-bloomberg-muted uppercase border-b border-bloomberg-border bg-bloomberg-bg/50">
+            <div>Time</div>
+            <div class="text-right">Price</div>
+            <div class="text-right">Qty</div>
+            <div class="text-right">Side</div>
+          </div>
+          
+          <div class="flex-1 overflow-y-auto">
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:32:15</div>
+              <div class="text-right text-bloomberg-green">185.42</div>
+              <div class="text-right text-bloomberg-white">100</div>
+              <div class="text-right text-bloomberg-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:32:12</div>
+              <div class="text-right text-bloomberg-red">185.40</div>
+              <div class="text-right text-bloomberg-white">50</div>
+              <div class="text-right text-bloomberg-red">SELL</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:32:08</div>
+              <div class="text-right text-bloomberg-green">185.42</div>
+              <div class="text-right text-bloomberg-white">200</div>
+              <div class="text-right text-bloomberg-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:32:05</div>
+              <div class="text-right text-bloomberg-green">185.41</div>
+              <div class="text-right text-bloomberg-white">75</div>
+              <div class="text-right text-bloomberg-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:32:01</div>
+              <div class="text-right text-bloomberg-red">185.38</div>
+              <div class="text-right text-bloomberg-white">150</div>
+              <div class="text-right text-bloomberg-red">SELL</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:31:58</div>
+              <div class="text-right text-bloomberg-green">185.40</div>
+              <div class="text-right text-bloomberg-white">100</div>
+              <div class="text-right text-bloomberg-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:31:55</div>
+              <div class="text-right text-bloomberg-red">185.37</div>
+              <div class="text-right text-bloomberg-white">80</div>
+              <div class="text-right text-bloomberg-red">SELL</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-0.5 text-sm border-b border-bloomberg-border/30">
+              <div class="text-bloomberg-muted">14:31:52</div>
+              <div class="text-right text-bloomberg-green">185.39</div>
+              <div class="text-right text-bloomberg-white">250</div>
+              <div class="text-right text-bloomberg-green">BUY</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+    </main>
+  </div>
+  
+  <!-- Initialize Demo Chart -->
+  <script>
+    // Generate sample price data
+    const now = Date.now();
+    const priceData = [];
+    let price = 183.00;
+    
+    for (let i = 100; i >= 0; i--) {
+      price += (Math.random() - 0.48) * 0.15;
+      price = Math.max(182, Math.min(186, price));
+      priceData.push({
+        x: now - i * 30000,
+        y: price
+      });
+    }
+    
+    const ctx = document.getElementById('priceChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'Price',
+          data: priceData,
+          borderColor: '#ff8c00',
+          backgroundColor: 'rgba(255, 140, 0, 0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.1,
+          pointRadius: 0,
+          pointHoverRadius: 6,
+          pointHoverBackgroundColor: '#ff8c00',
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgb(30, 30, 30)',
+            borderColor: 'rgb(60, 60, 60)',
+            borderWidth: 1,
+            titleColor: '#ff8c00',
+            bodyColor: '#ffffff',
+            titleFont: { family: 'IBM Plex Mono', size: 11 },
+            bodyFont: { family: 'IBM Plex Mono', size: 12 },
+            padding: 10,
+            displayColors: false,
+            callbacks: {
+              title: (items) => items.length ? new Date(items[0].raw.x).toLocaleTimeString('en-US', { hour12: false }) : '',
+              label: (item) => `Price: $${item.raw.y.toFixed(2)}`,
+            }
+          },
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: { displayFormats: { second: 'HH:mm:ss', minute: 'HH:mm' } },
+            grid: { color: 'rgba(60, 60, 60, 0.5)', drawBorder: false },
+            ticks: { color: '#888888', font: { family: 'IBM Plex Mono', size: 10 }, maxRotation: 0 },
+          },
+          y: {
+            grid: { color: 'rgba(60, 60, 60, 0.5)', drawBorder: false },
+            ticks: { color: '#888888', font: { family: 'IBM Plex Mono', size: 10 }, callback: (v) => '$' + v.toFixed(2) },
+          },
+        },
+      },
+    });
+  </script>
+</body>
+</html>

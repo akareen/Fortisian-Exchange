@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fortisian Exchange - Login Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bloomberg: {
+              bg: 'rgb(38, 38, 38)',
+              panel: 'rgb(30, 30, 30)',
+              border: 'rgb(60, 60, 60)',
+              borderLight: 'rgb(80, 80, 80)',
+              orange: '#ff8c00',
+              orangeDim: '#cc7000',
+              red: '#ff4757',
+              white: '#ffffff',
+              muted: '#888888',
+              mutedDark: '#666666',
+            }
+          },
+          fontFamily: {
+            mono: ['IBM Plex Mono', 'Consolas', 'Monaco', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    html, body { background: rgb(38, 38, 38); }
+    
+    .panel-border { border: 1px solid rgb(60, 60, 60); }
+    
+    .input-style {
+      background: transparent;
+      border: 1px solid rgb(80, 80, 80);
+      color: #ff8c00;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .input-style:focus {
+      outline: none;
+      border-color: #ff8c00;
+    }
+    .input-style::placeholder {
+      color: rgb(100, 100, 100);
+    }
+  </style>
+</head>
+<body class="bg-bloomberg-bg text-bloomberg-orange font-mono antialiased">
+
+  <!-- Demo Badge -->
+  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-bloomberg-orange text-bloomberg-bg px-4 py-1 text-xs font-bold tracking-wider">
+    LOGIN PAGE DEMO
+  </div>
+
+  <div class="min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-sm">
+      <!-- Logo -->
+      <div class="text-center mb-8">
+        <div class="text-4xl font-bold text-bloomberg-orange tracking-widest mb-2">
+          FORTISIAN
+        </div>
+        <div class="text-bloomberg-muted text-sm tracking-wider">
+          TRADING EXCHANGE
+        </div>
+        <div class="text-bloomberg-mutedDark text-xs mt-1">
+          © 2025 Fortisian Technologies
+        </div>
+      </div>
+      
+      <!-- Login Form -->
+      <div class="panel-border p-6" style="background: rgb(30, 30, 30)">
+        <form>
+          <div class="mb-4">
+            <label class="block text-bloomberg-muted text-xs mb-2 uppercase tracking-wider">
+              User ID
+            </label>
+            <input
+              type="text"
+              class="w-full px-3 py-2 input-style text-sm"
+              placeholder="Enter user ID"
+              value="student1"
+            >
+          </div>
+          
+          <div class="mb-6">
+            <label class="block text-bloomberg-muted text-xs mb-2 uppercase tracking-wider">
+              Password
+            </label>
+            <input
+              type="password"
+              class="w-full px-3 py-2 input-style text-sm"
+              placeholder="Enter password"
+              value="••••••••"
+            >
+          </div>
+          
+          <button
+            type="button"
+            class="w-full py-3 bg-bloomberg-orange text-bloomberg-bg font-bold text-sm uppercase tracking-wider hover:bg-bloomberg-orangeDim transition-colors"
+          >
+            LOGIN
+          </button>
+        </form>
+      </div>
+      
+      <div class="text-center mt-4 text-bloomberg-mutedDark text-xs">
+        Secure connection required
+      </div>
+      
+      <!-- Error State Demo -->
+      <div class="mt-8 panel-border p-6" style="background: rgb(30, 30, 30)">
+        <div class="text-xs text-bloomberg-muted uppercase mb-4">Error State Example:</div>
+        <div class="mb-4 p-3 border border-bloomberg-red bg-bloomberg-red/10 text-bloomberg-red text-sm">
+          Invalid credentials. Please try again.
+        </div>
+        <div class="text-xs text-bloomberg-mutedDark">
+          This shows how login errors appear
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
