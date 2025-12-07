@@ -47,6 +47,8 @@ from matching_engine import (
     is_public_event, is_private_event,
 )
 
+from book_cache import BookCacheManager, BookCacheConfig
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Configuration
@@ -479,11 +481,21 @@ class TradingServer:
         self,
         exchange: Exchange,
         config: ServerConfig | None = None,
+        book_cache_config: BookCacheConfig | None = None,
     ):
         self.exchange = exchange
         self.config = config or ServerConfig()
         self.sessions = SessionManager()
         self.audit = AuditLogger()
+        
+        # Book cache for fast reads without impacting matching engine
+        self.book_cache = BookCacheManager(book_cache_config or BookCacheConfig())
+        
+        # Initialize cache from current exchange state
+        self.book_cache.initialize_from_exchange(exchange)
+        
+        # Set up book update callback to push to clients
+        self.book_cache.set_update_callback(self._on_book_cache_update)
         
         # WebSocket connections by user
         self._connections: dict[str, web.WebSocketResponse] = {}
@@ -733,6 +745,8 @@ class TradingServer:
             "get_orders": self._handle_get_orders,
             "get_position": self._handle_get_position,
             "get_book": self._handle_get_book,
+            "get_level2": self._handle_get_level2,
+            "get_bbo": self._handle_get_bbo,
         }
         
         handler = handlers.get(msg_type)
@@ -788,10 +802,14 @@ class TradingServer:
         # Send subscription confirmation
         await self._send(session, make_response(MessageType.SUBSCRIBED, {"market_id": market_id}, request_id))
         
-        # Send current book snapshot
-        snapshot = self.exchange.get_book_snapshot(market_id)
+        # Send current book snapshot from cache (no rate limit for initial subscribe)
+        snapshot, _ = self.book_cache.get_book_snapshot(
+            market_id=market_id,
+            user_id=session.user_id,
+            check_rate_limit=False,  # Initial subscribe is free
+        )
         if snapshot:
-            await self._send(session, make_response(MessageType.BOOK_SNAPSHOT, snapshot.to_dict()))
+            await self._send(session, make_response(MessageType.BOOK_SNAPSHOT, snapshot))
         
         # Send user's open orders
         orders = self.exchange.get_user_orders(market_id, session.user_id)
@@ -972,18 +990,69 @@ class TradingServer:
             }, request_id))
     
     async def _handle_get_book(self, session: UserSession, data: dict, request_id: str | None) -> None:
-        """Handle get book request."""
+        """Handle get book request - uses cached data with rate limiting."""
+        market_id = data.get("market_id", "")
+        depth = data.get("depth", 50)  # Max depth to return
+        
+        if not market_id:
+            await self._send(session, make_error("market_id required", request_id=request_id))
+            return
+        
+        # Use book cache with rate limiting (separate from order rate limits)
+        snapshot, error = self.book_cache.get_book_snapshot(
+            market_id=market_id,
+            user_id=session.user_id,
+            check_rate_limit=True,
+        )
+        
+        if error:
+            # Rate limited or not found
+            await self._send(session, make_error(error, "rate_limited", request_id))
+            return
+        
+        await self._send(session, make_response(MessageType.BOOK_SNAPSHOT, snapshot, request_id))
+    
+    async def _handle_get_level2(self, session: UserSession, data: dict, request_id: str | None) -> None:
+        """Handle get level2 book request - aggregated price levels."""
+        market_id = data.get("market_id", "")
+        depth = data.get("depth", 10)
+        
+        if not market_id:
+            await self._send(session, make_error("market_id required", request_id=request_id))
+            return
+        
+        level2, error = self.book_cache.get_level2(
+            market_id=market_id,
+            user_id=session.user_id,
+            depth=min(depth, 50),
+            check_rate_limit=True,
+        )
+        
+        if error:
+            await self._send(session, make_error(error, "rate_limited", request_id))
+            return
+        
+        await self._send(session, make_response(MessageType.BOOK_SNAPSHOT, level2, request_id))
+    
+    async def _handle_get_bbo(self, session: UserSession, data: dict, request_id: str | None) -> None:
+        """Handle get best bid/offer request - Level 1 data."""
         market_id = data.get("market_id", "")
         
         if not market_id:
             await self._send(session, make_error("market_id required", request_id=request_id))
             return
         
-        snapshot = self.exchange.get_book_snapshot(market_id)
-        if snapshot:
-            await self._send(session, make_response(MessageType.BOOK_SNAPSHOT, snapshot.to_dict(), request_id))
-        else:
-            await self._send(session, make_error(f"Market not found: {market_id}", request_id=request_id))
+        bbo, error = self.book_cache.get_best_bid_ask(
+            market_id=market_id,
+            user_id=session.user_id,
+            check_rate_limit=True,
+        )
+        
+        if error:
+            await self._send(session, make_error(error, "rate_limited", request_id))
+            return
+        
+        await self._send(session, make_response("bbo", bbo, request_id))
     
     # ─────────────────────────────────────────────────────────────────────────
     # Exchange Event Handler
@@ -991,12 +1060,22 @@ class TradingServer:
     
     def _on_exchange_event(self, event: EngineEvent) -> None:
         """Handle events from the exchange."""
+        # Update book cache (synchronous, fast)
+        self.book_cache.on_event(event)
+        
         try:
             loop = asyncio.get_running_loop()
             loop.create_task(self._broadcast_event(event))
         except RuntimeError:
             # No running event loop - this is fine during testing/setup
             pass
+    
+    def _on_book_cache_update(self, market_id: str) -> None:
+        """Handle book cache update - push to subscribers."""
+        # This is called from book cache when book changes
+        # We'll use the existing broadcast mechanism from _broadcast_event
+        # The book updates are already pushed via BookSnapshot/BookDelta events
+        pass
     
     async def _broadcast_event(self, event: EngineEvent) -> None:
         """Broadcast exchange event to relevant users."""
@@ -1081,6 +1160,7 @@ class TradingServer:
         stats["connected_users"] = len(self._connections)
         stats["active_sessions"] = len(self.sessions.get_all_sessions())
         stats["suspicious_users"] = self.audit.get_suspicious_users()
+        stats["book_cache"] = self.book_cache.get_stats()
         
         return web.json_response(stats)
     
