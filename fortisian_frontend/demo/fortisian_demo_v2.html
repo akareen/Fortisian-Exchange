@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fortisian Exchange v2 - Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bb: { bg:'#262626',panel:'#1e1e1e',border:'#3c3c3c',orange:'#ff8c00',green:'#00d26a',greenBg:'rgba(0,210,106,0.12)',red:'#ff4757',redBg:'rgba(255,71,87,0.12)',white:'#fff',text:'#e0e0e0',muted:'#888',mutedDark:'#666',yellow:'#ffd700',yellowBg:'rgba(255,215,0,0.12)',cyan:'#00bcd4' }
+          },
+          fontFamily: { mono: ['IBM Plex Mono', 'monospace'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    html,body{background:#262626;}
+    .bid-bar{background:linear-gradient(90deg,rgba(0,210,106,0.3) var(--pct),transparent var(--pct));}
+    .ask-bar{background:linear-gradient(270deg,rgba(255,71,87,0.3) var(--pct),transparent var(--pct));}
+    .panel{background:#1e1e1e;border:1px solid #3c3c3c;border-radius:4px;}
+    .panel-header{padding:10px 12px;border-bottom:1px solid #3c3c3c;background:linear-gradient(180deg,#242424,#1e1e1e);}
+    .panel-title{color:#ff8c00;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;}
+    .input-field{background:transparent;border:1px solid #505050;border-radius:3px;color:#ff8c00;}
+    .btn-buy{background:linear-gradient(180deg,#00b858,#00a04d);color:#fff;font-weight:600;border-radius:3px;}
+    .btn-sell{background:linear-gradient(180deg,#e8404f,#cc3945);color:#fff;font-weight:600;border-radius:3px;}
+    .level-row:hover{background:rgba(255,140,0,0.08);cursor:pointer;}
+    .best-bid{background:linear-gradient(90deg,rgba(0,210,106,0.15),transparent);}
+    .best-ask{background:linear-gradient(270deg,rgba(255,71,87,0.15),transparent);}
+    .order-card{background:#262626;border:1px solid #3c3c3c;border-radius:3px;}
+    .order-card.buy{border-left:2px solid #00d26a;}
+    .order-card.sell{border-left:2px solid #ff4757;}
+    .trade-buy{border-left:2px solid #00d26a;}
+    .trade-sell{border-left:2px solid #ff4757;}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:#00d26a;box-shadow:0 0 6px #00d26a;}
+    .kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 4px;font-size:9px;background:#2a2a2a;border:1px solid #404040;border-radius:2px;color:#888;}
+  </style>
+</head>
+<body class="bg-bb-bg text-bb-text font-mono antialiased">
+  <!-- Demo Badge -->
+  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-bb-yellow text-bb-bg px-4 py-1 text-xs font-bold tracking-wider rounded">
+    DEMO MODE - STATIC DATA
+  </div>
+
+  <div class="h-screen flex flex-col overflow-hidden">
+    <!-- Header -->
+    <header class="px-4 py-2 flex items-center justify-between border-b border-bb-border" style="background:linear-gradient(180deg,#242424,#1e1e1e)">
+      <div class="flex items-center gap-5">
+        <div class="text-bb-orange font-bold text-lg tracking-widest">FORTISIAN</div>
+        <div class="flex items-center gap-1">
+          <button class="px-3 py-1.5 text-xs font-medium rounded bg-bb-orange/20 text-bb-orange border border-bb-orange/30">AAPL</button>
+          <button class="px-3 py-1.5 text-xs font-medium rounded text-bb-muted hover:text-bb-text border border-transparent">BTCUSD</button>
+          <button class="px-3 py-1.5 text-xs font-medium rounded text-bb-muted hover:text-bb-text border border-transparent">GOLD</button>
+        </div>
+        <div class="flex items-center gap-2 px-3 py-1 rounded bg-bb-bg/50">
+          <div class="status-dot"></div>
+          <span class="text-xs text-bb-muted uppercase">CONNECTED</span>
+          <span class="text-xs text-bb-mutedDark">12ms</span>
+        </div>
+        <div class="text-xs px-3 py-1 uppercase tracking-wider rounded font-medium bg-bb-greenBg text-bb-green border border-bb-green/20">ACTIVE</div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button class="p-2 rounded text-bb-orange hover:bg-bb-orange/20">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+        </button>
+        <div class="flex items-center gap-2 text-sm">
+          <span class="text-bb-muted">User:</span>
+          <span class="text-bb-orange font-medium">Demo Trader</span>
+          <span class="text-[10px] bg-bb-yellowBg text-bb-yellow px-2 py-0.5 rounded border border-bb-yellow/20 font-bold">ADMIN</span>
+        </div>
+        <button class="px-3 py-1.5 text-xs text-bb-muted hover:text-bb-red border border-bb-border hover:border-bb-red/50 rounded">LOGOUT</button>
+      </div>
+    </header>
+
+    <!-- Market Banner -->
+    <div class="px-4 py-3 flex items-center justify-between border-b border-bb-border bg-bb-panel">
+      <div class="flex items-center gap-6">
+        <div class="text-2xl font-bold text-bb-white tracking-wide">AAPL</div>
+        <div class="border-l border-bb-border pl-6">
+          <div class="text-[10px] text-bb-muted uppercase">Last</div>
+          <div class="text-2xl font-bold text-bb-green tabular-nums">185.42</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-bb-muted uppercase">Change</div>
+          <div class="text-lg font-semibold text-bb-green tabular-nums">+2.15 (+1.17%)</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-bb-muted uppercase">Time</div>
+          <div class="text-sm text-bb-orange tabular-nums">14:32:15</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-5">
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">Bid</div><div class="text-sm font-medium text-bb-green tabular-nums">185.40</div></div>
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">Ask</div><div class="text-sm font-medium text-bb-red tabular-nums">185.45</div></div>
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">Spread</div><div class="text-sm font-medium text-bb-orange tabular-nums">0.05</div></div>
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">High</div><div class="text-sm font-medium text-bb-cyan tabular-nums">186.20</div></div>
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">Low</div><div class="text-sm font-medium text-bb-cyan tabular-nums">183.15</div></div>
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">Volume</div><div class="text-sm font-medium text-bb-cyan tabular-nums">12,450</div></div>
+        <div class="text-right"><div class="text-[10px] text-bb-muted uppercase">Seq</div><div class="text-sm font-medium text-bb-mutedDark tabular-nums">1,247</div></div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-2 grid grid-cols-12 gap-2 min-h-0 overflow-hidden">
+      <!-- Order Book -->
+      <div class="col-span-4 panel flex flex-col min-h-0" style="max-height:calc(100vh - 140px)">
+        <div class="panel-header flex items-center justify-between">
+          <span class="panel-title">Order Book</span>
+          <div class="flex items-center gap-3 text-xs">
+            <span class="text-bb-green">8 lvls</span>
+            <span class="text-bb-mutedDark">|</span>
+            <span class="text-bb-red">7 lvls</span>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 px-3 py-1.5 text-[10px] text-bb-muted uppercase tracking-wider border-b border-bb-border bg-bb-bg/30">
+          <div class="text-left">Bid</div>
+          <div class="text-center">Price</div>
+          <div class="text-right">Ask</div>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          <!-- Asks (descending) -->
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:0%"></div>
+            <div class="text-center font-medium text-bb-red tabular-nums">185.75</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:25%">250</div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:0%"></div>
+            <div class="text-center font-medium text-bb-red tabular-nums">185.70</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:40%">400</div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:0%"></div>
+            <div class="text-center font-medium text-bb-red tabular-nums">185.60</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:55%">550</div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:0%"></div>
+            <div class="text-center font-medium text-bb-red tabular-nums">185.50</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:80%">800</div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row best-ask">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:0%"></div>
+            <div class="text-center font-bold text-bb-red tabular-nums">185.45</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums font-bold" style="--pct:100%">1,000</div>
+          </div>
+          <!-- Spread -->
+          <div class="px-3 py-1 text-[10px] text-bb-yellow text-center border-y border-bb-border/30 bg-bb-bg/30">SPREAD: 0.05</div>
+          <!-- Bids -->
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row best-bid">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums font-bold" style="--pct:85%">850</div>
+            <div class="text-center font-bold text-bb-green tabular-nums">185.40</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:60%">600</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.35</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:100%">1,000</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.30</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:45%">450</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.25</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:30%">300</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.20</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:55%">550</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.15</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:70%">700</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.10</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+          <div class="grid grid-cols-3 px-3 py-[3px] text-sm level-row">
+            <div class="text-left text-bb-green bid-bar pr-2 tabular-nums" style="--pct:40%">400</div>
+            <div class="text-center font-medium text-bb-green tabular-nums">185.05</div>
+            <div class="text-right text-bb-red ask-bar pl-2 tabular-nums" style="--pct:0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center: Chart + Order Entry -->
+      <div class="col-span-4 flex flex-col gap-2 min-h-0">
+        <!-- Price Chart -->
+        <div class="panel flex flex-col" style="height:45%">
+          <div class="panel-header"><span class="panel-title">Price Chart</span></div>
+          <div class="flex-1 p-2"><canvas id="priceChart"></canvas></div>
+        </div>
+        
+        <!-- Order Entry -->
+        <div class="panel p-4">
+          <div class="panel-title mb-4">Order Entry</div>
+          <div class="space-y-4">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-[10px] text-bb-muted uppercase">Price</label>
+                <div class="flex gap-1">
+                  <button class="text-[9px] px-1.5 py-0.5 text-bb-green hover:bg-bb-greenBg rounded">ASK</button>
+                  <button class="text-[9px] px-1.5 py-0.5 text-bb-red hover:bg-bb-redBg rounded">BID</button>
+                </div>
+              </div>
+              <input type="text" value="185.40" class="w-full px-3 py-2.5 input-field text-sm tabular-nums font-mono">
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-[10px] text-bb-muted uppercase">Quantity</label>
+                <div class="flex gap-1">
+                  <button class="text-[9px] px-1.5 py-0.5 text-bb-muted hover:text-bb-orange rounded">10</button>
+                  <button class="text-[9px] px-1.5 py-0.5 text-bb-muted hover:text-bb-orange rounded">50</button>
+                  <button class="text-[9px] px-1.5 py-0.5 text-bb-muted hover:text-bb-orange rounded">100</button>
+                </div>
+              </div>
+              <input type="number" value="100" class="w-full px-3 py-2.5 input-field text-sm tabular-nums font-mono">
+            </div>
+            <div>
+              <label class="text-[10px] text-bb-muted uppercase block mb-1.5">Time in Force</label>
+              <select class="w-full px-3 py-2.5 input-field text-sm cursor-pointer font-mono">
+                <option>GTC - Good Till Cancel</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3 pt-2">
+              <button class="py-3 btn-buy text-sm uppercase tracking-wider">BUY</button>
+              <button class="py-3 btn-sell text-sm uppercase tracking-wider">SELL</button>
+            </div>
+            <div class="flex justify-center gap-4 text-[10px] text-bb-mutedDark pt-1">
+              <span><kbd class="kbd">Esc</kbd> Clear</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Position -->
+        <div class="panel p-4">
+          <div class="panel-title mb-4">Position</div>
+          <div class="space-y-3">
+            <div class="text-center py-3 rounded bg-bb-bg">
+              <div class="text-[10px] text-bb-muted uppercase mb-1">Net Position</div>
+              <div class="text-3xl font-bold text-bb-green tabular-nums">+150</div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="p-3 rounded bg-bb-bg text-center">
+                <div class="text-[10px] text-bb-muted uppercase mb-1">Realized P&L</div>
+                <div class="text-lg font-bold text-bb-green tabular-nums">+$425.00</div>
+              </div>
+              <div class="p-3 rounded bg-bb-bg text-center">
+                <div class="text-[10px] text-bb-muted uppercase mb-1">Trades</div>
+                <div class="text-lg font-bold text-bb-orange tabular-nums">12</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 text-center text-xs">
+              <div class="p-2 rounded bg-bb-bg">
+                <div class="text-bb-green font-medium tabular-nums">500</div>
+                <div class="text-[9px] text-bb-muted uppercase">Bought</div>
+              </div>
+              <div class="p-2 rounded bg-bb-bg">
+                <div class="text-bb-red font-medium tabular-nums">350</div>
+                <div class="text-[9px] text-bb-muted uppercase">Sold</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Orders + Trades -->
+      <div class="col-span-4 flex flex-col gap-2 min-h-0">
+        <!-- Open Orders -->
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-3">
+            <span class="panel-title">Open Orders (3)</span>
+            <button class="text-[10px] px-2 py-1 text-bb-red border border-bb-red/30 hover:bg-bb-redBg rounded">CANCEL ALL</button>
+          </div>
+          <div class="space-y-2">
+            <div class="order-card buy p-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="text-xs font-bold px-2 py-0.5 rounded bg-bb-greenBg text-bb-green">BUY</span>
+                <span class="text-bb-white font-medium tabular-nums">100</span>
+                <span class="text-bb-muted">@</span>
+                <span class="text-bb-orange font-medium tabular-nums">185.35</span>
+              </div>
+              <button class="text-bb-red hover:bg-bb-redBg p-1.5 rounded">✕</button>
+            </div>
+            <div class="order-card buy p-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="text-xs font-bold px-2 py-0.5 rounded bg-bb-greenBg text-bb-green">BUY</span>
+                <span class="text-bb-white font-medium tabular-nums">50</span>
+                <span class="text-bb-muted">@</span>
+                <span class="text-bb-orange font-medium tabular-nums">185.30</span>
+              </div>
+              <button class="text-bb-red hover:bg-bb-redBg p-1.5 rounded">✕</button>
+            </div>
+            <div class="order-card sell p-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="text-xs font-bold px-2 py-0.5 rounded bg-bb-redBg text-bb-red">SELL</span>
+                <span class="text-bb-white font-medium tabular-nums">75</span>
+                <span class="text-bb-muted">@</span>
+                <span class="text-bb-orange font-medium tabular-nums">185.50</span>
+              </div>
+              <button class="text-bb-red hover:bg-bb-redBg p-1.5 rounded">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="panel flex-1 flex flex-col min-h-0">
+          <div class="panel-header">
+            <span class="panel-title">Recent Trades</span>
+            <span class="text-[10px] text-bb-muted">24 trades</span>
+          </div>
+          <div class="grid grid-cols-4 px-3 py-1.5 text-[10px] text-bb-muted uppercase border-b border-bb-border bg-bb-bg/30">
+            <div>Time</div>
+            <div class="text-right">Price</div>
+            <div class="text-right">Qty</div>
+            <div class="text-right">Side</div>
+          </div>
+          <div class="flex-1 overflow-y-auto">
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-buy">
+              <div class="text-bb-muted tabular-nums text-xs">14:32:15</div>
+              <div class="text-right font-medium text-bb-green tabular-nums">185.42</div>
+              <div class="text-right text-bb-white tabular-nums">100</div>
+              <div class="text-right text-xs font-medium text-bb-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-sell">
+              <div class="text-bb-muted tabular-nums text-xs">14:32:12</div>
+              <div class="text-right font-medium text-bb-red tabular-nums">185.40</div>
+              <div class="text-right text-bb-white tabular-nums">50</div>
+              <div class="text-right text-xs font-medium text-bb-red">SELL</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-buy">
+              <div class="text-bb-muted tabular-nums text-xs">14:32:08</div>
+              <div class="text-right font-medium text-bb-green tabular-nums">185.42</div>
+              <div class="text-right text-bb-white tabular-nums">200</div>
+              <div class="text-right text-xs font-medium text-bb-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-buy">
+              <div class="text-bb-muted tabular-nums text-xs">14:32:05</div>
+              <div class="text-right font-medium text-bb-green tabular-nums">185.41</div>
+              <div class="text-right text-bb-white tabular-nums">75</div>
+              <div class="text-right text-xs font-medium text-bb-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-sell">
+              <div class="text-bb-muted tabular-nums text-xs">14:32:01</div>
+              <div class="text-right font-medium text-bb-red tabular-nums">185.38</div>
+              <div class="text-right text-bb-white tabular-nums">150</div>
+              <div class="text-right text-xs font-medium text-bb-red">SELL</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-buy">
+              <div class="text-bb-muted tabular-nums text-xs">14:31:58</div>
+              <div class="text-right font-medium text-bb-green tabular-nums">185.40</div>
+              <div class="text-right text-bb-white tabular-nums">100</div>
+              <div class="text-right text-xs font-medium text-bb-green">BUY</div>
+            </div>
+            <div class="grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 trade-sell">
+              <div class="text-bb-muted tabular-nums text-xs">14:31:55</div>
+              <div class="text-right font-medium text-bb-red tabular-nums">185.37</div>
+              <div class="text-right text-bb-white tabular-nums">80</div>
+              <div class="text-right text-xs font-medium text-bb-red">SELL</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="px-4 py-1.5 text-[10px] text-bb-mutedDark flex items-center justify-between border-t border-bb-border bg-bb-panel">
+      <span>Fortisian v2.0.0</span>
+      <span>© 2025 Fortisian Technologies</span>
+      <span><kbd class="kbd">M</kbd> sound · <kbd class="kbd">1-3</kbd> markets · <kbd class="kbd">C</kbd> cancel all</span>
+    </footer>
+  </div>
+
+  <script>
+    // Generate sample price data
+    const now = Date.now();
+    const priceData = [];
+    let price = 183.00;
+    for (let i = 100; i >= 0; i--) {
+      price += (Math.random() - 0.48) * 0.15;
+      price = Math.max(182, Math.min(186, price));
+      priceData.push({ x: now - i * 30000, y: price });
+    }
+    
+    const ctx = document.getElementById('priceChart').getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+    gradient.addColorStop(0, 'rgba(255, 140, 0, 0.2)');
+    gradient.addColorStop(1, 'rgba(255, 140, 0, 0)');
+    
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          data: priceData,
+          borderColor: '#ff8c00',
+          backgroundColor: gradient,
+          borderWidth: 2,
+          fill: true,
+          tension: 0.2,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: '#ff8c00',
+          pointHoverBorderColor: '#fff',
+          pointHoverBorderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e1e1e',
+            borderColor: '#3c3c3c',
+            borderWidth: 1,
+            titleColor: '#ff8c00',
+            bodyColor: '#e0e0e0',
+            padding: 10,
+            cornerRadius: 4,
+            displayColors: false,
+            callbacks: {
+              title: (i) => i.length ? new Date(i[0].raw.x).toLocaleTimeString('en-US', {hour12:false}) : '',
+              label: (i) => `$${i.raw.y.toFixed(2)}`,
+            }
+          },
+        },
+        scales: {
+          x: {
+            type: 'time',
+            grid: { color: 'rgba(60,60,60,0.3)', drawBorder: false },
+            ticks: { color: '#666', font: { family: 'IBM Plex Mono', size: 9 }, maxRotation: 0 },
+          },
+          y: {
+            position: 'right',
+            grid: { color: 'rgba(60,60,60,0.3)', drawBorder: false },
+            ticks: { color: '#666', font: { family: 'IBM Plex Mono', size: 9 }, callback: (v) => '$' + v.toFixed(2) },
+          },
+        },
+      },
+    });
+  </script>
+</body>
+</html>

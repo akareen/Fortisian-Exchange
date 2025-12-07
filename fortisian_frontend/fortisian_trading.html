@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fortisian Exchange</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <meta name="theme-color" content="#262626">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bb: {
+              bg: '#262626', bgDark: '#1a1a1a', panel: '#1e1e1e', panelHover: '#2a2a2a',
+              border: '#3c3c3c', borderLight: '#505050', orange: '#ff8c00', orangeHover: '#ffa033',
+              green: '#00d26a', greenBg: 'rgba(0,210,106,0.12)', red: '#ff4757', redBg: 'rgba(255,71,87,0.12)',
+              white: '#fff', text: '#e0e0e0', muted: '#888', mutedDark: '#666',
+              yellow: '#ffd700', yellowBg: 'rgba(255,215,0,0.12)', cyan: '#00bcd4', cyanBg: 'rgba(0,188,212,0.12)',
+            }
+          },
+          fontFamily: { mono: ['IBM Plex Mono', 'Consolas', 'monospace'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    :root { --bb-bg:#262626; --bb-panel:#1e1e1e; --bb-border:#3c3c3c; --bb-orange:#ff8c00; --bb-green:#00d26a; --bb-red:#ff4757; }
+    * { scrollbar-width:thin; scrollbar-color:#505050 #262626; }
+    *::-webkit-scrollbar { width:6px; height:6px; }
+    *::-webkit-scrollbar-track { background:#262626; }
+    *::-webkit-scrollbar-thumb { background:#505050; border-radius:3px; }
+    html, body { background:#262626; overflow:hidden; }
+    input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance:none; }
+    input[type="number"] { -moz-appearance:textfield; }
+    .bid-bar { background:linear-gradient(90deg, rgba(0,210,106,0.3) var(--pct), transparent var(--pct)); }
+    .ask-bar { background:linear-gradient(270deg, rgba(255,71,87,0.3) var(--pct), transparent var(--pct)); }
+    @keyframes flashGreen { 0%{background:rgba(0,210,106,0.5);} 100%{background:transparent;} }
+    @keyframes flashRed { 0%{background:rgba(255,71,87,0.5);} 100%{background:transparent;} }
+    @keyframes slideDown { 0%{opacity:0;transform:translateY(-8px);} 100%{opacity:1;transform:translateY(0);} }
+    @keyframes ticker { 0%{opacity:0;transform:translateX(15px);} 100%{opacity:1;transform:translateX(0);} }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+    .flash-green { animation:flashGreen 0.4s ease-out; }
+    .flash-red { animation:flashRed 0.4s ease-out; }
+    .slide-down { animation:slideDown 0.25s ease-out; }
+    .ticker-anim { animation:ticker 0.3s ease-out; }
+    .pulse { animation:pulse 1.5s infinite; }
+    .panel { background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; }
+    .panel-header { padding:10px 12px; border-bottom:1px solid #3c3c3c; background:linear-gradient(180deg,#242424,#1e1e1e); }
+    .panel-title { color:#ff8c00; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; }
+    .input-field { background:transparent; border:1px solid #505050; border-radius:3px; color:#ff8c00; font-family:'IBM Plex Mono',monospace; transition:all 0.15s; }
+    .input-field:focus { outline:none; border-color:#ff8c00; box-shadow:0 0 0 2px rgba(255,140,0,0.15); }
+    .input-field::placeholder { color:#666; }
+    .btn { font-weight:600; font-size:12px; letter-spacing:0.05em; border-radius:3px; transition:all 0.15s; text-transform:uppercase; }
+    .btn:active:not(:disabled) { transform:scale(0.98); }
+    .btn-buy { background:linear-gradient(180deg,#00b858,#00a04d); color:#fff; box-shadow:0 2px 4px rgba(0,168,84,0.3); }
+    .btn-buy:hover:not(:disabled) { background:linear-gradient(180deg,#00d26a,#00b858); }
+    .btn-sell { background:linear-gradient(180deg,#e8404f,#cc3945); color:#fff; box-shadow:0 2px 4px rgba(204,57,69,0.3); }
+    .btn-sell:hover:not(:disabled) { background:linear-gradient(180deg,#ff4757,#e8404f); }
+    .btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .level-row:hover { background:rgba(255,140,0,0.08); cursor:pointer; }
+    .best-bid { background:linear-gradient(90deg,rgba(0,210,106,0.15),transparent); }
+    .best-ask { background:linear-gradient(270deg,rgba(255,71,87,0.15),transparent); }
+    .order-card { background:#262626; border:1px solid #3c3c3c; border-radius:3px; transition:all 0.15s; }
+    .order-card:hover { border-color:#505050; background:#2a2a2a; }
+    .order-card.buy { border-left:2px solid #00d26a; }
+    .order-card.sell { border-left:2px solid #ff4757; }
+    .trade-buy { border-left:2px solid #00d26a; }
+    .trade-sell { border-left:2px solid #ff4757; }
+    .notification { backdrop-filter:blur(8px); border-left:3px solid; border-radius:4px; }
+    .notification.success { border-color:#00d26a; background:rgba(0,210,106,0.15); }
+    .notification.error { border-color:#ff4757; background:rgba(255,71,87,0.15); }
+    .notification.info { border-color:#ff8c00; background:rgba(255,140,0,0.15); }
+    .status-dot { width:8px; height:8px; border-radius:50%; }
+    .status-dot.connected { background:#00d26a; box-shadow:0 0 6px #00d26a; }
+    .status-dot.connecting, .status-dot.reconnecting { background:#ffd700; animation:pulse 1.5s infinite; }
+    .status-dot.disconnected { background:#ff4757; }
+    .kbd { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:16px; padding:0 4px; font-size:9px; background:#2a2a2a; border:1px solid #404040; border-radius:2px; color:#888; }
+    .dropdown { position:relative; }
+    .dropdown-menu { position:absolute; top:100%; right:0; margin-top:4px; background:#1e1e1e; border:1px solid #3c3c3c; border-radius:4px; min-width:160px; z-index:50; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
+    .dropdown-item { display:block; padding:8px 12px; font-size:12px; color:#888; transition:all 0.15s; }
+    .dropdown-item:hover { background:#2a2a2a; color:#ff8c00; }
+    .dropdown-divider { height:1px; background:#3c3c3c; margin:4px 0; }
+  </style>
+</head>
+<body class="bg-bb-bg text-bb-text font-mono antialiased select-none">
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,createContext,useContext,useMemo,useReducer}=React;
+
+const CONFIG={
+  API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
+  WS_URL:window.location.hostname==='localhost'?'ws://localhost:8080/ws':`${window.location.protocol==='https:'?'wss:':'ws:'}//${window.location.hostname}:8080/ws`,
+  ADMIN_URL:'fortisian_admin.html',
+  RECONNECT_DELAYS:[500,1000,2000,4000,8000,15000,30000],
+  PING_INTERVAL:25000,MAX_TRADES:200,MAX_PRICE_HISTORY:1000,BOOK_FLASH_DURATION:400,VERSION:'2.1.0'
+};
+
+const formatPrice=(p)=>{if(p===null||p===undefined||p==='--')return'--';const n=typeof p==='string'?parseFloat(p):p;return isNaN(n)?'--':n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
+const formatQty=(q)=>q===null||q===undefined?'--':parseInt(q,10).toLocaleString('en-US');
+const formatTime=(t)=>t?new Date(t).toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}):'--:--:--';
+
+class SoundManager{
+  constructor(){this.ctx=null;this.enabled=true;this.vol=0.3;this.last={};}
+  init(){if(!this.ctx)this.ctx=new(window.AudioContext||window.webkitAudioContext)();if(this.ctx.state==='suspended')this.ctx.resume();}
+  canPlay(t,ms=100){const now=Date.now();if(now-(this.last[t]||0)<ms)return false;this.last[t]=now;return true;}
+  playTick(up=true){if(!this.enabled||!this.canPlay('tick',80))return;this.init();const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.frequency.value=up?880:660;o.type='sine';g.gain.setValueAtTime(this.vol*0.15,this.ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+0.08);o.start();o.stop(this.ctx.currentTime+0.08);}
+  playTrade(buy=true){if(!this.enabled||!this.canPlay('trade',150))return;this.init();const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);const f=buy?523:392;o.frequency.setValueAtTime(f,this.ctx.currentTime);o.frequency.setValueAtTime(f*1.25,this.ctx.currentTime+0.05);o.type='sine';g.gain.setValueAtTime(this.vol*0.2,this.ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+0.12);o.start();o.stop(this.ctx.currentTime+0.12);}
+  playAlert(t='info'){if(!this.enabled||!this.canPlay('alert',300))return;this.init();const freqs={success:[523,659,784],error:[311,294],info:[659,784]};const fs=freqs[t]||freqs.info;fs.forEach((f,i)=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.frequency.value=f;o.type=t==='error'?'square':'sine';const st=this.ctx.currentTime+i*0.08;g.gain.setValueAtTime(0,st);g.gain.linearRampToValueAtTime(this.vol*0.15,st+0.02);g.gain.exponentialRampToValueAtTime(0.001,st+0.15);o.start(st);o.stop(st+0.15);});}
+  playFill(){if(!this.enabled||!this.canPlay('fill',300))return;this.init();[523,659,784,1047].forEach((f,i)=>{const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.connect(g);g.connect(this.ctx.destination);o.frequency.value=f;o.type='sine';const st=this.ctx.currentTime+i*0.05;g.gain.setValueAtTime(this.vol*0.12,st);g.gain.exponentialRampToValueAtTime(0.001,st+0.2);o.start(st);o.stop(st+0.2);});}
+  toggle(){this.enabled=!this.enabled;return this.enabled;}
+}
+const soundManager=new SoundManager();
+
+const AppContext=createContext(null);
+
+const initialState={
+  isLoggedIn:false,userId:'',displayName:'',isAdmin:false,
+  wsStatus:'disconnected',latency:null,
+  currentMarket:'AAPL',marketStatus:'active',availableMarkets:['AAPL','BTCUSD','GOLD'],
+  bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,bookStats:{bidLevels:0,askLevels:0,bidVolume:0,askVolume:0},
+  openOrders:[],position:{net_qty:0,realized_pnl:'0',total_bought:0,total_sold:0,trade_count:0},
+  recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0,
+  adminAlerts:[],notifications:[],
+  orderFormPrice:'',orderFormQty:'',orderFormTif:'gtc',soundEnabled:true,showUserMenu:false,
+};
+
+function reducer(state,action){
+  switch(action.type){
+    case'SET_AUTH':return{...state,...action.payload,isLoggedIn:true};
+    case'LOGOUT':return{...initialState};
+    case'SET_WS_STATUS':return{...state,wsStatus:action.payload};
+    case'SET_LATENCY':return{...state,latency:action.payload};
+    case'SET_MARKET':return{...state,currentMarket:action.payload,bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,openOrders:[],recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0};
+    case'BOOK_SNAPSHOT':return{...state,...action.payload};
+    case'BOOK_DELTA':if(action.payload.sequence<=state.sequence)return state;return{...state,...action.payload};
+    case'ADD_TRADE':const tp=parseFloat(action.payload.price);return{...state,recentTrades:[action.payload,...state.recentTrades].slice(0,CONFIG.MAX_TRADES),priceHistory:[...state.priceHistory,{time:new Date(action.payload.timestamp).getTime(),price:tp,qty:action.payload.qty,side:action.payload.side}].slice(-CONFIG.MAX_PRICE_HISTORY),lastTradePrice:action.payload.price,lastTradeSide:action.payload.side,dayHigh:state.dayHigh?Math.max(state.dayHigh,tp):tp,dayLow:state.dayLow?Math.min(state.dayLow,tp):tp,dayOpen:state.dayOpen||tp,dayVolume:state.dayVolume+action.payload.qty};
+    case'SET_ORDERS':return{...state,openOrders:action.payload};
+    case'ADD_ORDER':return{...state,openOrders:[...state.openOrders,action.payload]};
+    case'UPDATE_ORDER':return{...state,openOrders:state.openOrders.map(o=>o.orderId===action.payload.orderId?{...o,...action.payload}:o).filter(o=>(o.remainingQty||o.qty)>0)};
+    case'REMOVE_ORDER':return{...state,openOrders:state.openOrders.filter(o=>o.orderId!==action.payload)};
+    case'SET_POSITION':return{...state,position:{...state.position,...action.payload}};
+    case'SET_MARKET_STATUS':return{...state,marketStatus:action.payload};
+    case'ADD_NOTIFICATION':return{...state,notifications:[...state.notifications,{id:Date.now(),...action.payload}]};
+    case'REMOVE_NOTIFICATION':return{...state,notifications:state.notifications.filter(n=>n.id!==action.payload)};
+    case'ADD_ADMIN_ALERT':return{...state,adminAlerts:[{id:Date.now(),timestamp:new Date().toISOString(),...action.payload},...state.adminAlerts].slice(0,100)};
+    case'SET_ORDER_FORM':return{...state,...action.payload};
+    case'TOGGLE_SOUND':soundManager.enabled=!state.soundEnabled;return{...state,soundEnabled:!state.soundEnabled};
+    case'TOGGLE_USER_MENU':return{...state,showUserMenu:!state.showUserMenu};
+    case'CLOSE_MENUS':return{...state,showUserMenu:false};
+    default:return state;
+  }
+}
+
+class WSManager{
+  constructor(dispatch,getState){this.ws=null;this.dispatch=dispatch;this.getState=getState;this.reconnectAttempts=0;this.reconnectTimeout=null;this.pingInterval=null;this.intentionalClose=false;this.queue=[];this.currentMarket=null;this.lastPing=0;}
+  connect(){if(this.ws?.readyState===WebSocket.OPEN)return;this.intentionalClose=false;this.dispatch({type:'SET_WS_STATUS',payload:'connecting'});try{this.ws=new WebSocket(CONFIG.WS_URL);this.ws.onopen=()=>{this.reconnectAttempts=0;this.dispatch({type:'SET_WS_STATUS',payload:'connected'});while(this.queue.length)this.send(...Object.values(this.queue.shift()));if(this.currentMarket)this.send('subscribe',{market_id:this.currentMarket});this.startPing();};this.ws.onmessage=(e)=>{try{this.handleMessage(JSON.parse(e.data));}catch(err){}};this.ws.onclose=()=>{this.stopPing();if(!this.intentionalClose){this.dispatch({type:'SET_WS_STATUS',payload:'disconnected'});this.scheduleReconnect();}};this.ws.onerror=()=>{};}catch(e){this.scheduleReconnect();}}
+  disconnect(){this.intentionalClose=true;this.stopPing();clearTimeout(this.reconnectTimeout);if(this.ws){this.ws.close();this.ws=null;}this.dispatch({type:'SET_WS_STATUS',payload:'disconnected'});}
+  scheduleReconnect(){const d=CONFIG.RECONNECT_DELAYS[Math.min(this.reconnectAttempts,CONFIG.RECONNECT_DELAYS.length-1)];this.reconnectAttempts++;this.dispatch({type:'SET_WS_STATUS',payload:'reconnecting'});this.reconnectTimeout=setTimeout(()=>this.connect(),d);}
+  startPing(){this.pingInterval=setInterval(()=>{if(this.ws?.readyState===WebSocket.OPEN){this.lastPing=Date.now();this.ws.send(JSON.stringify({type:'ping',timestamp:this.lastPing}));}},CONFIG.PING_INTERVAL);}
+  stopPing(){if(this.pingInterval){clearInterval(this.pingInterval);this.pingInterval=null;}}
+  send(type,data={},rid=null){const msg={type,data};if(rid)msg.request_id=rid;if(this.ws?.readyState===WebSocket.OPEN){this.ws.send(JSON.stringify(msg));return true;}this.queue.push({type,data,rid});return false;}
+  subscribe(mid){this.currentMarket=mid;this.send('subscribe',{market_id:mid});}
+  unsubscribe(mid){if(this.currentMarket===mid)this.currentMarket=null;this.send('unsubscribe',{market_id:mid});}
+  handleMessage(msg){const{type,data}=msg;const state=this.getState();
+    switch(type){
+      case'pong':if(this.lastPing)this.dispatch({type:'SET_LATENCY',payload:Date.now()-this.lastPing});break;
+      case'book_snapshot':{const bids={},asks={};let bv=0,av=0;(data.bids||[]).forEach(l=>{bids[l.price]={qty:l.qty,orderCount:l.order_count};bv+=l.qty;});(data.asks||[]).forEach(l=>{asks[l.price]={qty:l.qty,orderCount:l.order_count};av+=l.qty;});this.dispatch({type:'BOOK_SNAPSHOT',payload:{bids,asks,sequence:data.sequence,bestBid:data.best_bid,bestAsk:data.best_ask,spread:data.spread,bookStats:{bidLevels:Object.keys(bids).length,askLevels:Object.keys(asks).length,bidVolume:bv,askVolume:av}}});break;}
+      case'book_delta':{const ub={...state.bids},ua={...state.asks};let ch=false;(data.changes||[]).forEach(c=>{const b=c.side==='buy'?ub:ua;if(c.action==='remove'||c.qty===0)delete b[c.price];else{b[c.price]={qty:c.qty,orderCount:c.order_count,flash:c.side==='buy'?'green':'red',flashTime:Date.now()};}ch=true;});if(ch){soundManager.playTick(data.changes[0]?.side==='buy');let bv=0,av=0;Object.values(ub).forEach(b=>bv+=b.qty);Object.values(ua).forEach(a=>av+=a.qty);this.dispatch({type:'BOOK_DELTA',payload:{bids:ub,asks:ua,sequence:data.sequence,bestBid:data.best_bid,bestAsk:data.best_ask,bookStats:{bidLevels:Object.keys(ub).length,askLevels:Object.keys(ua).length,bidVolume:bv,askVolume:av}}});}break;}
+      case'trade':{const t=data.trade||data;soundManager.playTrade(t.aggressor_side==='buy');this.dispatch({type:'ADD_TRADE',payload:{id:t.id||t.trade_id||Date.now(),price:t.price,qty:t.qty,side:t.aggressor_side,timestamp:t.timestamp||new Date().toISOString()}});break;}
+      case'order_accepted':soundManager.playAlert('success');this.dispatch({type:'ADD_ORDER',payload:{orderId:data.order_id,marketId:data.market_id,side:data.side,price:data.price,qty:data.qty,remainingQty:data.qty,timeInForce:data.time_in_force,timestamp:data.timestamp}});this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Order accepted: ${data.side.toUpperCase()} ${data.qty} @ ${data.price}`,type:'success',duration:3000}});if(state.isAdmin)this.dispatch({type:'ADD_ADMIN_ALERT',payload:{alertType:'order_accepted',data}});break;
+      case'order_rejected':soundManager.playAlert('error');this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Rejected: ${data.reason_text||data.reason}`,type:'error',duration:5000}});break;
+      case'order_filled':soundManager.playFill();this.dispatch({type:'UPDATE_ORDER',payload:{orderId:data.order_id,remainingQty:data.remaining_qty}});this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Filled: ${data.fill_qty} @ ${data.fill_price}`,type:'success',duration:3000}});if(state.isAdmin)this.dispatch({type:'ADD_ADMIN_ALERT',payload:{alertType:'order_filled',data}});break;
+      case'order_cancelled':this.dispatch({type:'REMOVE_ORDER',payload:data.order_id});this.dispatch({type:'ADD_NOTIFICATION',payload:{message:'Order cancelled',type:'info',duration:2000}});break;
+      case'order_expired':this.dispatch({type:'REMOVE_ORDER',payload:data.order_id});break;
+      case'orders':this.dispatch({type:'SET_ORDERS',payload:(data.orders||[]).map(o=>({orderId:o.order_id,marketId:o.market_id,side:o.side,price:o.price,qty:o.qty,remainingQty:o.remaining_qty,timeInForce:o.time_in_force}))});break;
+      case'position':this.dispatch({type:'SET_POSITION',payload:data.position||data});break;
+      case'market_status':case'market_status_changed':this.dispatch({type:'SET_MARKET_STATUS',payload:data.new_status||data.status});break;
+      case'subscribed':this.dispatch({type:'ADD_NOTIFICATION',payload:{message:`Subscribed to ${data.market_id}`,type:'info',duration:2000}});break;
+      case'error':soundManager.playAlert('error');this.dispatch({type:'ADD_NOTIFICATION',payload:{message:data.message||'Error',type:'error',duration:5000}});break;
+    }
+  }
+}
+
+function useApp(){
+  const[state,dispatch]=useReducer(reducer,initialState);
+  const wsRef=useRef(null);
+  const ridRef=useRef(0);
+  const getState=useCallback(()=>state,[state]);
+  useEffect(()=>{wsRef.current=new WSManager(dispatch,getState);return()=>wsRef.current?.disconnect();},[]);
+  useEffect(()=>{if(wsRef.current)wsRef.current.getState=getState;},[getState]);
+  const getRid=useCallback(()=>`r_${Date.now()}_${++ridRef.current}`,[]);
+  useEffect(()=>{state.notifications.forEach(n=>{if(n.duration>0)setTimeout(()=>dispatch({type:'REMOVE_NOTIFICATION',payload:n.id}),n.duration);});},[state.notifications]);
+  
+  // Close menus on click outside
+  useEffect(()=>{const h=()=>dispatch({type:'CLOSE_MENUS'});document.addEventListener('click',h);return()=>document.removeEventListener('click',h);},[]);
+  
+  const login=useCallback(async(uid,pwd)=>{try{const r=await fetch(`${CONFIG.API_URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({user_id:uid,password:pwd})});const d=await r.json();if(r.ok&&d.success){dispatch({type:'SET_AUTH',payload:{userId:d.user_id,displayName:d.display_name||d.user_id,isAdmin:d.is_admin||false}});setTimeout(()=>{wsRef.current?.connect();setTimeout(()=>wsRef.current?.subscribe(state.currentMarket),300);},100);return{success:true};}return{success:false,error:d.error||'Login failed'};}catch(e){return{success:false,error:'Connection failed'};}},[state.currentMarket]);
+  const logout=useCallback(async()=>{try{await fetch(`${CONFIG.API_URL}/auth/logout`,{method:'POST',credentials:'include'});}catch(e){}wsRef.current?.disconnect();dispatch({type:'LOGOUT'});},[]);
+  const submitOrder=useCallback((side,price,qty,tif='gtc')=>{wsRef.current?.send('order_submit',{market_id:state.currentMarket,side:side.toLowerCase(),price:price.toString(),qty:parseInt(qty,10),time_in_force:tif.toLowerCase()},getRid());},[state.currentMarket,getRid]);
+  const cancelOrder=useCallback((oid)=>wsRef.current?.send('order_cancel',{market_id:state.currentMarket,order_id:oid}),[state.currentMarket]);
+  const cancelAllOrders=useCallback(()=>wsRef.current?.send('order_cancel_all',{market_id:state.currentMarket}),[state.currentMarket]);
+  const switchMarket=useCallback((mid)=>{if(mid===state.currentMarket)return;wsRef.current?.unsubscribe(state.currentMarket);dispatch({type:'SET_MARKET',payload:mid});wsRef.current?.subscribe(mid);},[state.currentMarket]);
+  const setOrderForm=useCallback((u)=>dispatch({type:'SET_ORDER_FORM',payload:u}),[]);
+  const toggleSound=useCallback(()=>dispatch({type:'TOGGLE_SOUND'}),[]);
+  const toggleUserMenu=useCallback((e)=>{e?.stopPropagation();dispatch({type:'TOGGLE_USER_MENU'});},[]);
+  
+  // Keyboard shortcuts
+  useEffect(()=>{const h=(e)=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();setOrderForm({orderFormPrice:'',orderFormQty:''});}return;}if(e.key==='m'){e.preventDefault();toggleSound();}if(e.key==='c'&&state.openOrders.length>0){e.preventDefault();cancelAllOrders();}if(e.key>='1'&&e.key<='3'){const i=parseInt(e.key)-1;if(state.availableMarkets[i]){e.preventDefault();switchMarket(state.availableMarkets[i]);}}if(e.key==='Escape')setOrderForm({orderFormPrice:'',orderFormQty:''});};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[state.openOrders,state.availableMarkets,cancelAllOrders,switchMarket,toggleSound,setOrderForm]);
+  return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu};
+}
+
+// Icons
+const XIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>;
+const CheckIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>;
+const VolumeIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>;
+const MuteIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>;
+const UserIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>;
+const CogIcon=()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>;
+const ChevronIcon=()=><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/></svg>;
+
+// Login Page
+function LoginPage(){
+  const{login}=useContext(AppContext);
+  const[uid,setUid]=useState('');
+  const[pwd,setPwd]=useState('');
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState('');
+  const handleSubmit=async(e)=>{e.preventDefault();if(!uid.trim()||!pwd)return;setLoading(true);setError('');const r=await login(uid.trim(),pwd);if(!r.success){setError(r.error);setLoading(false);}};
+  return(
+    <div className="min-h-screen flex items-center justify-center bg-bb-bg p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-10">
+          <div className="text-5xl font-bold text-bb-orange tracking-[0.3em] mb-3">FORTISIAN</div>
+          <div className="text-bb-muted text-sm tracking-[0.2em] uppercase">Trading Exchange</div>
+          <div className="text-bb-mutedDark text-xs mt-2">v{CONFIG.VERSION} · © 2025</div>
+        </div>
+        <div className="panel p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {error&&<div className="p-4 border border-bb-red bg-bb-redBg text-bb-red text-sm slide-down">{error}</div>}
+            <div>
+              <label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">User ID</label>
+              <input type="text" value={uid} onChange={e=>setUid(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="Enter user ID" autoFocus/>
+            </div>
+            <div>
+              <label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Password</label>
+              <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="Enter password"/>
+            </div>
+            <button type="submit" disabled={loading||!uid.trim()||!pwd} className="w-full py-4 bg-bb-orange text-bb-bgDark font-bold text-sm uppercase tracking-wider hover:bg-bb-orangeHover disabled:opacity-50 rounded">
+              {loading?'Connecting...':'Login'}
+            </button>
+          </form>
+        </div>
+        <div className="text-center mt-6 text-bb-mutedDark text-xs">🔒 Secure connection</div>
+      </div>
+    </div>
+  );
+}
+
+// Header with Admin link
+function Header(){
+  const{state,logout,switchMarket,toggleSound,toggleUserMenu}=useContext(AppContext);
+  return(
+    <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#242424,#1e1e1e)'}}>
+      <div className="flex items-center gap-5">
+        <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
+        <div className="flex items-center gap-1">
+          {state.availableMarkets.map((m,i)=>(<button key={m} onClick={()=>switchMarket(m)} className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${state.currentMarket===m?'bg-bb-orange/20 text-bb-orange border border-bb-orange/30':'text-bb-muted hover:text-bb-text hover:bg-bb-panelHover border border-transparent'}`}>{m}</button>))}
+        </div>
+        <div className="flex items-center gap-2 px-3 py-1 rounded bg-bb-bg/50">
+          <div className={`status-dot ${state.wsStatus}`}/>
+          <span className="text-xs text-bb-muted uppercase">{state.wsStatus}</span>
+          {state.latency&&state.wsStatus==='connected'&&<span className="text-xs text-bb-mutedDark">{state.latency}ms</span>}
+        </div>
+        <div className={`text-xs px-3 py-1 uppercase tracking-wider rounded font-medium ${state.marketStatus==='active'?'bg-bb-greenBg text-bb-green border border-bb-green/20':state.marketStatus==='halted'?'bg-bb-redBg text-bb-red border border-bb-red/20':'bg-bb-bg text-bb-muted border border-bb-border'}`}>{state.marketStatus}</div>
+      </div>
+      <div className="flex items-center gap-3">
+        <button onClick={toggleSound} className={`p-2 rounded transition-all ${state.soundEnabled?'text-bb-orange hover:bg-bb-orange/20':'text-bb-mutedDark hover:text-bb-muted'}`} title="Toggle sound (M)">{state.soundEnabled?<VolumeIcon/>:<MuteIcon/>}</button>
+        
+        {/* User Menu Dropdown */}
+        <div className="dropdown">
+          <button onClick={toggleUserMenu} className="flex items-center gap-2 px-3 py-1.5 rounded hover:bg-bb-panelHover transition-all">
+            <UserIcon/>
+            <span className="text-bb-orange font-medium text-sm">{state.displayName}</span>
+            {state.isAdmin&&<span className="text-[10px] bg-bb-yellowBg text-bb-yellow px-2 py-0.5 rounded border border-bb-yellow/20 font-bold">ADMIN</span>}
+            <ChevronIcon/>
+          </button>
+          
+          {state.showUserMenu&&(
+            <div className="dropdown-menu slide-down" onClick={e=>e.stopPropagation()}>
+              <div className="px-3 py-2 border-b border-bb-border">
+                <div className="text-bb-white font-medium text-sm">{state.displayName}</div>
+                <div className="text-bb-muted text-xs">{state.userId}</div>
+              </div>
+              {state.isAdmin&&(
+                <>
+                  <a href={CONFIG.ADMIN_URL} className="dropdown-item flex items-center gap-2">
+                    <CogIcon/>
+                    <span>Admin Dashboard</span>
+                  </a>
+                  <div className="dropdown-divider"/>
+                </>
+              )}
+              <button onClick={logout} className="dropdown-item w-full text-left text-bb-red hover:text-bb-red">
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+// Market Banner
+function MarketBanner(){
+  const{state}=useContext(AppContext);
+  const{bookStats,dayHigh,dayLow,dayOpen,dayVolume}=state;
+  const last=parseFloat(state.lastTradePrice)||0;
+  const ch=dayOpen?(last-dayOpen):0;
+  const chPct=dayOpen?((ch/dayOpen)*100):0;
+  const stats=[{l:'Bid',v:formatPrice(state.bestBid),c:'text-bb-green'},{l:'Ask',v:formatPrice(state.bestAsk),c:'text-bb-red'},{l:'Spread',v:formatPrice(state.spread),c:'text-bb-orange'},{l:'High',v:formatPrice(dayHigh),c:'text-bb-cyan'},{l:'Low',v:formatPrice(dayLow),c:'text-bb-cyan'},{l:'Volume',v:formatQty(dayVolume),c:'text-bb-cyan'},{l:'Bid Vol',v:formatQty(bookStats.bidVolume),c:'text-bb-green'},{l:'Ask Vol',v:formatQty(bookStats.askVolume),c:'text-bb-red'}];
+  return(
+    <div className="px-4 py-3 flex items-center justify-between border-b border-bb-border bg-bb-panel">
+      <div className="flex items-center gap-6">
+        <div className="text-2xl font-bold text-bb-white tracking-wide">{state.currentMarket}</div>
+        <div className="border-l border-bb-border pl-6">
+          <div className="text-[10px] text-bb-muted uppercase">Last</div>
+          <div className={`text-2xl font-bold tabular-nums ${state.lastTradeSide==='buy'?'text-bb-green':state.lastTradeSide==='sell'?'text-bb-red':'text-bb-white'}`}>{formatPrice(state.lastTradePrice)||'--'}</div>
+        </div>
+        {dayOpen&&<div><div className="text-[10px] text-bb-muted uppercase">Change</div><div className={`text-lg font-semibold tabular-nums ${ch>=0?'text-bb-green':'text-bb-red'}`}>{ch>=0?'+':''}{formatPrice(ch)} ({chPct>=0?'+':''}{chPct.toFixed(2)}%)</div></div>}
+        <div><div className="text-[10px] text-bb-muted uppercase">Time</div><div className="text-sm text-bb-orange tabular-nums">{formatTime(state.recentTrades[0]?.timestamp)}</div></div>
+      </div>
+      <div className="flex items-center gap-5">
+        {stats.map(({l,v,c})=>(<div key={l} className="text-right"><div className="text-[10px] text-bb-muted uppercase">{l}</div><div className={`text-sm font-medium tabular-nums ${c}`}>{v}</div></div>))}
+        <div className="text-right"><div className="text-[10px] text-bb-muted uppercase">Seq</div><div className="text-sm font-medium tabular-nums text-bb-mutedDark">{state.sequence.toLocaleString()}</div></div>
+      </div>
+    </div>
+  );
+}
+
+// Order Book
+function OrderBook(){
+  const{state,setOrderForm}=useContext(AppContext);
+  const[flashStates,setFlashStates]=useState({});
+  const allPrices=useMemo(()=>{const p=new Set([...Object.keys(state.bids),...Object.keys(state.asks)]);return Array.from(p).map(x=>parseFloat(x)).sort((a,b)=>b-a);},[state.bids,state.asks]);
+  const maxQty=useMemo(()=>{const mb=Math.max(...Object.values(state.bids).map(b=>b.qty||0),1);const ma=Math.max(...Object.values(state.asks).map(a=>a.qty||0),1);return Math.max(mb,ma);},[state.bids,state.asks]);
+  useEffect(()=>{const now=Date.now();const nf={};[...Object.entries(state.bids),...Object.entries(state.asks)].forEach(([p,l])=>{if(l.flashTime&&now-l.flashTime<CONFIG.BOOK_FLASH_DURATION)nf[p]=l.flash;});if(Object.keys(nf).length>0){setFlashStates(nf);const t=setTimeout(()=>setFlashStates({}),CONFIG.BOOK_FLASH_DURATION);return()=>clearTimeout(t);}},[state.bids,state.asks]);
+  return(
+    <div className="panel h-full flex flex-col">
+      <div className="panel-header"><span className="panel-title">Order Book</span><div className="flex items-center gap-3 text-xs"><span className="text-bb-green">{state.bookStats.bidLevels} lvls</span><span className="text-bb-mutedDark">|</span><span className="text-bb-red">{state.bookStats.askLevels} lvls</span></div></div>
+      <div className="grid grid-cols-3 px-3 py-1.5 text-[10px] text-bb-muted uppercase tracking-wider border-b border-bb-border bg-bb-bg/30"><div className="text-left">Bid</div><div className="text-center">Price</div><div className="text-right">Ask</div></div>
+      <div className="flex-1 overflow-y-auto">
+        {allPrices.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">📊 Waiting for orders...</div>:
+        allPrices.map((price,idx)=>{
+          const ps=price.toFixed(2);
+          const bid=state.bids[ps],ask=state.asks[ps];
+          const bq=bid?.qty||0,aq=ask?.qty||0;
+          const bp=((bq/maxQty)*100).toFixed(0),ap=((aq/maxQty)*100).toFixed(0);
+          const isBB=ps===state.bestBid,isBA=ps===state.bestAsk;
+          const fl=flashStates[ps]==='green'?'flash-green':flashStates[ps]==='red'?'flash-red':'';
+          const showSpread=idx>0&&allPrices[idx-1]&&state.bestAsk&&state.bestBid&&parseFloat(allPrices[idx-1].toFixed(2))===parseFloat(state.bestAsk)&&ps===state.bestBid;
+          return(<React.Fragment key={ps}>
+            {showSpread&&<div className="px-3 py-1 text-[10px] text-bb-yellow text-center border-y border-bb-border/30 bg-bb-bg/30">SPREAD: {formatPrice(state.spread)}</div>}
+            <div onClick={()=>setOrderForm({orderFormPrice:ps})} className={`grid grid-cols-3 px-3 py-[3px] text-sm level-row ${fl} ${isBB?'best-bid':''} ${isBA?'best-ask':''}`}>
+              <div className="text-left text-bb-green bid-bar pr-2 tabular-nums" style={{'--pct':`${bp}%`}}>{bq>0&&<span className={isBB?'font-bold':''}>{formatQty(bq)}</span>}</div>
+              <div className={`text-center font-medium tabular-nums ${isBB?'text-bb-green font-bold':isBA?'text-bb-red font-bold':'text-bb-white'}`}>{ps}</div>
+              <div className="text-right text-bb-red ask-bar pl-2 tabular-nums" style={{'--pct':`${ap}%`}}>{aq>0&&<span className={isBA?'font-bold':''}>{formatQty(aq)}</span>}</div>
+            </div>
+          </React.Fragment>);
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Price Chart
+function PriceChart(){
+  const{state}=useContext(AppContext);
+  const canvasRef=useRef(null);
+  const chartRef=useRef(null);
+  useEffect(()=>{if(!canvasRef.current)return;if(chartRef.current)chartRef.current.destroy();const ctx=canvasRef.current.getContext('2d');const data=state.priceHistory.map(p=>({x:p.time,y:p.price}));const gradient=ctx.createLinearGradient(0,0,0,200);gradient.addColorStop(0,'rgba(255,140,0,0.2)');gradient.addColorStop(1,'rgba(255,140,0,0)');chartRef.current=new Chart(ctx,{type:'line',data:{datasets:[{label:'Price',data,borderColor:'#ff8c00',backgroundColor:gradient,borderWidth:2,fill:true,tension:0.2,pointRadius:0,pointHoverRadius:5,pointHoverBackgroundColor:'#ff8c00',pointHoverBorderColor:'#fff',pointHoverBorderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{backgroundColor:'#1e1e1e',borderColor:'#3c3c3c',borderWidth:1,titleColor:'#ff8c00',bodyColor:'#e0e0e0',titleFont:{family:'IBM Plex Mono',size:10},bodyFont:{family:'IBM Plex Mono',size:12},padding:10,cornerRadius:4,displayColors:false,callbacks:{title:(i)=>i.length?formatTime(i[0].raw.x):'',label:(i)=>`$${i.raw.y.toFixed(2)}`}}},scales:{x:{type:'time',time:{displayFormats:{second:'HH:mm:ss',minute:'HH:mm'}},grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},maxRotation:0}},y:{position:'right',grid:{color:'rgba(60,60,60,0.3)',drawBorder:false},ticks:{color:'#666',font:{family:'IBM Plex Mono',size:9},callback:(v)=>'$'+v.toFixed(2)}}}}});return()=>chartRef.current?.destroy();},[state.priceHistory]);
+  return(
+    <div className="panel h-full flex flex-col">
+      <div className="panel-header"><span className="panel-title">Price Chart</span></div>
+      <div className="flex-1 p-2 min-h-0">{state.priceHistory.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">📈 Waiting for trades...</div>:<canvas ref={canvasRef}/>}</div>
+    </div>
+  );
+}
+
+// Order Entry
+function OrderEntry(){
+  const{state,submitOrder,setOrderForm}=useContext(AppContext);
+  const[submitting,setSubmitting]=useState(null);
+  const{orderFormPrice:price,orderFormQty:qty,orderFormTif:tif}=state;
+  const handleSubmit=(side)=>{if(!price||!qty||submitting)return;setSubmitting(side);submitOrder(side,price,qty,tif);setTimeout(()=>{setSubmitting(null);setOrderForm({orderFormQty:''});},300);};
+  const handleBest=(s)=>{const p=s==='buy'?state.bestAsk:state.bestBid;if(p)setOrderForm({orderFormPrice:p});};
+  const disabled=submitting||!price||!qty||state.marketStatus!=='active';
+  return(
+    <div className="panel p-4">
+      <div className="panel-title mb-4">Order Entry</div>
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between mb-1.5"><label className="text-[10px] text-bb-muted uppercase">Price</label><div className="flex gap-1"><button onClick={()=>handleBest('buy')} className="text-[9px] px-1.5 py-0.5 text-bb-green hover:bg-bb-greenBg rounded">ASK</button><button onClick={()=>handleBest('sell')} className="text-[9px] px-1.5 py-0.5 text-bb-red hover:bg-bb-redBg rounded">BID</button></div></div>
+          <input type="text" value={price} onChange={e=>setOrderForm({orderFormPrice:e.target.value})} placeholder="0.00" className="w-full px-3 py-2.5 input-field text-sm tabular-nums" disabled={submitting}/>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1.5"><label className="text-[10px] text-bb-muted uppercase">Quantity</label><div className="flex gap-1">{[10,50,100].map(q=>(<button key={q} onClick={()=>setOrderForm({orderFormQty:String(q)})} className="text-[9px] px-1.5 py-0.5 text-bb-muted hover:text-bb-orange hover:bg-bb-orange/10 rounded">{q}</button>))}</div></div>
+          <input type="number" value={qty} onChange={e=>setOrderForm({orderFormQty:e.target.value})} placeholder="0" min="1" className="w-full px-3 py-2.5 input-field text-sm tabular-nums" disabled={submitting}/>
+        </div>
+        <div><label className="text-[10px] text-bb-muted uppercase block mb-1.5">Time in Force</label><select value={tif} onChange={e=>setOrderForm({orderFormTif:e.target.value})} className="w-full px-3 py-2.5 input-field text-sm cursor-pointer" disabled={submitting}><option value="gtc" className="bg-bb-panel">GTC</option><option value="ioc" className="bg-bb-panel">IOC</option><option value="fok" className="bg-bb-panel">FOK</option></select></div>
+        <div className="grid grid-cols-2 gap-3 pt-2"><button onClick={()=>handleSubmit('buy')} disabled={disabled} className="py-3 btn btn-buy">{submitting==='buy'?'...':'BUY'}</button><button onClick={()=>handleSubmit('sell')} disabled={disabled} className="py-3 btn btn-sell">{submitting==='sell'?'...':'SELL'}</button></div>
+        <div className="flex justify-center gap-4 text-[10px] text-bb-mutedDark pt-1"><span><kbd className="kbd">Esc</kbd> Clear</span></div>
+      </div>
+    </div>
+  );
+}
+
+// Position Display
+function PositionDisplay(){
+  const{state}=useContext(AppContext);
+  const{position}=state;
+  const nq=position.net_qty||0;
+  const pnl=parseFloat(position.realized_pnl||'0');
+  const getPnlClass=(v)=>v>0?'text-bb-green':v<0?'text-bb-red':'text-bb-muted';
+  return(
+    <div className="panel p-4">
+      <div className="panel-title mb-4">Position</div>
+      <div className="space-y-3">
+        <div className="text-center py-3 rounded bg-bb-bg"><div className="text-[10px] text-bb-muted uppercase mb-1">Net Position</div><div className={`text-3xl font-bold tabular-nums ${nq>0?'text-bb-green':nq<0?'text-bb-red':'text-bb-white'}`}>{nq>0?'+':''}{nq}</div></div>
+        <div className="grid grid-cols-2 gap-3"><div className="p-3 rounded bg-bb-bg text-center"><div className="text-[10px] text-bb-muted uppercase mb-1">Realized P&L</div><div className={`text-lg font-bold tabular-nums ${getPnlClass(pnl)}`}>${pnl>=0?'+':''}{formatPrice(pnl)}</div></div><div className="p-3 rounded bg-bb-bg text-center"><div className="text-[10px] text-bb-muted uppercase mb-1">Trades</div><div className="text-lg font-bold tabular-nums text-bb-orange">{position.trade_count||0}</div></div></div>
+        <div className="grid grid-cols-2 gap-2 text-center text-xs"><div className="p-2 rounded bg-bb-bg"><div className="text-bb-green font-medium tabular-nums">{formatQty(position.total_bought)}</div><div className="text-[9px] text-bb-muted uppercase">Bought</div></div><div className="p-2 rounded bg-bb-bg"><div className="text-bb-red font-medium tabular-nums">{formatQty(position.total_sold)}</div><div className="text-[9px] text-bb-muted uppercase">Sold</div></div></div>
+      </div>
+    </div>
+  );
+}
+
+// Open Orders
+function OpenOrders(){
+  const{state,cancelOrder,cancelAllOrders}=useContext(AppContext);
+  return(
+    <div className="panel p-4">
+      <div className="flex items-center justify-between mb-3"><span className="panel-title">Open Orders ({state.openOrders.length})</span>{state.openOrders.length>0&&<button onClick={cancelAllOrders} className="text-[10px] px-2 py-1 text-bb-red border border-bb-red/30 hover:bg-bb-redBg rounded">CANCEL ALL</button>}</div>
+      {state.openOrders.length===0?<div className="text-bb-muted text-sm text-center py-6">No open orders</div>:
+      <div className="space-y-2 max-h-48 overflow-y-auto">{state.openOrders.map((o,i)=>(<div key={o.orderId} className={`order-card ${o.side} p-3 flex items-center justify-between slide-down`} style={{animationDelay:`${i*50}ms`}}><div className="flex items-center gap-3"><span className={`text-xs font-bold px-2 py-0.5 rounded ${o.side==='buy'?'bg-bb-greenBg text-bb-green':'bg-bb-redBg text-bb-red'}`}>{o.side.toUpperCase()}</span><span className="text-bb-white font-medium tabular-nums">{o.remainingQty||o.qty}</span><span className="text-bb-muted">@</span><span className="text-bb-orange font-medium tabular-nums">{o.price}</span></div><button onClick={()=>cancelOrder(o.orderId)} className="text-bb-red hover:bg-bb-redBg p-1.5 rounded"><XIcon/></button></div>))}</div>}
+    </div>
+  );
+}
+
+// Recent Trades
+function RecentTrades(){
+  const{state}=useContext(AppContext);
+  return(
+    <div className="panel h-full flex flex-col">
+      <div className="panel-header"><span className="panel-title">Recent Trades</span><span className="text-[10px] text-bb-muted">{state.recentTrades.length}</span></div>
+      <div className="grid grid-cols-4 px-3 py-1.5 text-[10px] text-bb-muted uppercase border-b border-bb-border bg-bb-bg/30"><div>Time</div><div className="text-right">Price</div><div className="text-right">Qty</div><div className="text-right">Side</div></div>
+      <div className="flex-1 overflow-y-auto">{state.recentTrades.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">💹 No trades yet</div>:
+      state.recentTrades.map((t,i)=>(<div key={t.id} className={`grid grid-cols-4 px-3 py-1 text-sm border-b border-bb-border/20 ${t.side==='buy'?'trade-buy':'trade-sell'} ${i===0?'ticker-anim':''}`}><div className="text-bb-muted tabular-nums text-xs">{formatTime(t.timestamp)}</div><div className={`text-right font-medium tabular-nums ${t.side==='buy'?'text-bb-green':'text-bb-red'}`}>{formatPrice(t.price)}</div><div className="text-right text-bb-white tabular-nums">{formatQty(t.qty)}</div><div className={`text-right text-xs font-medium ${t.side==='buy'?'text-bb-green':'text-bb-red'}`}>{t.side?.toUpperCase()}</div></div>))}</div>
+    </div>
+  );
+}
+
+// Admin Alerts
+function AdminAlerts(){
+  const{state}=useContext(AppContext);
+  if(!state.isAdmin||state.adminAlerts.length===0)return null;
+  const colors={order_accepted:'text-bb-green',order_rejected:'text-bb-red',order_filled:'text-bb-cyan'};
+  return(
+    <div className="panel p-4 mt-3">
+      <div className="panel-title mb-3 flex items-center gap-2"><span className="text-bb-yellow">⚡</span>Admin Alerts</div>
+      <div className="space-y-2 max-h-40 overflow-y-auto">{state.adminAlerts.slice(0,15).map((a,i)=>(<div key={a.id} className="text-xs p-2 bg-bb-bg rounded border border-bb-border/30 slide-down" style={{animationDelay:`${i*30}ms`}}><div className="flex items-center justify-between"><span className={`font-bold ${colors[a.alertType]||'text-bb-orange'}`}>{a.alertType?.replace(/_/g,' ').toUpperCase()}</span><span className="text-bb-mutedDark tabular-nums">{formatTime(a.timestamp)}</span></div><div className="text-bb-muted mt-1">{a.data.user_id&&<span>User: {a.data.user_id} · </span>}{a.data.side&&<span className={a.data.side==='buy'?'text-bb-green':'text-bb-red'}>{a.data.side.toUpperCase()}</span>}{a.data.qty&&<span> {a.data.qty}</span>}{a.data.price&&<span> @ {a.data.price}</span>}{a.data.fill_qty&&<span>Fill: {a.data.fill_qty} @ {a.data.fill_price}</span>}</div></div>))}</div>
+    </div>
+  );
+}
+
+// Notifications
+function Notifications(){
+  const{state,dispatch}=useContext(AppContext);
+  if(state.notifications.length===0)return null;
+  const icons={success:<CheckIcon/>,error:<XIcon/>,info:<CheckIcon/>};
+  return(
+    <div className="fixed top-16 right-4 z-50 space-y-2 max-w-sm">{state.notifications.map(n=>(<div key={n.id} onClick={()=>dispatch({type:'REMOVE_NOTIFICATION',payload:n.id})} className={`notification ${n.type} px-4 py-3 text-sm font-medium slide-down cursor-pointer flex items-center gap-3 shadow-lg`}><span className={n.type==='success'?'text-bb-green':n.type==='error'?'text-bb-red':'text-bb-orange'}>{icons[n.type]}</span><span className="text-bb-text">{n.message}</span></div>))}</div>
+  );
+}
+
+// Trading Page
+function TradingPage(){
+  return(
+    <div className="h-screen flex flex-col bg-bb-bg overflow-hidden">
+      <Header/>
+      <MarketBanner/>
+      <main className="flex-1 p-2 grid grid-cols-12 gap-2 min-h-0">
+        <div className="col-span-4 min-h-0"><OrderBook/></div>
+        <div className="col-span-4 flex flex-col gap-2 min-h-0">
+          <div className="flex-1 min-h-0" style={{maxHeight:'45%'}}><PriceChart/></div>
+          <div className="flex-shrink-0 overflow-y-auto" style={{maxHeight:'55%'}}><OrderEntry/><div className="mt-2"><PositionDisplay/></div><AdminAlerts/></div>
+        </div>
+        <div className="col-span-4 flex flex-col gap-2 min-h-0"><div className="flex-shrink-0"><OpenOrders/></div><div className="flex-1 min-h-0"><RecentTrades/></div></div>
+      </main>
+      <Notifications/>
+      <footer className="px-4 py-1.5 text-[10px] text-bb-mutedDark flex items-center justify-between border-t border-bb-border bg-bb-panel">
+        <span>Fortisian v{CONFIG.VERSION}</span>
+        <span>© 2025 Fortisian Technologies</span>
+        <span><kbd className="kbd">M</kbd> sound · <kbd className="kbd">1-3</kbd> markets · <kbd className="kbd">C</kbd> cancel all</span>
+      </footer>
+    </div>
+  );
+}
+
+// App
+function App(){
+  const app=useApp();
+  return(<AppContext.Provider value={app}>{app.state.isLoggedIn?<TradingPage/>:<LoginPage/>}</AppContext.Provider>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

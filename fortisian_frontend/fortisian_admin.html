@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fortisian Admin Dashboard</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <meta name="theme-color" content="#262626">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bb: { bg:'#262626',bgDark:'#1a1a1a',panel:'#1e1e1e',border:'#3c3c3c',borderLight:'#505050',orange:'#ff8c00',orangeHover:'#ffa033',green:'#00d26a',greenBg:'rgba(0,210,106,0.12)',red:'#ff4757',redBg:'rgba(255,71,87,0.12)',white:'#fff',text:'#e0e0e0',muted:'#888',mutedDark:'#666',yellow:'#ffd700',yellowBg:'rgba(255,215,0,0.12)',cyan:'#00bcd4',cyanBg:'rgba(0,188,212,0.12)',purple:'#9c27b0',purpleBg:'rgba(156,39,176,0.12)' }
+          },
+          fontFamily: { mono: ['IBM Plex Mono','monospace'] },
+        }
+      }
+    }
+  </script>
+  <style>
+    html,body{background:#262626;overflow-x:hidden;}
+    *{scrollbar-width:thin;scrollbar-color:#505050 #262626;}
+    .panel{background:#1e1e1e;border:1px solid #3c3c3c;border-radius:4px;}
+    .panel-header{padding:12px 16px;border-bottom:1px solid #3c3c3c;background:linear-gradient(180deg,#242424,#1e1e1e);}
+    .panel-title{color:#ff8c00;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.1em;}
+    .input-field{background:transparent;border:1px solid #505050;border-radius:3px;color:#ff8c00;font-family:'IBM Plex Mono',monospace;}
+    .input-field:focus{outline:none;border-color:#ff8c00;box-shadow:0 0 0 2px rgba(255,140,0,0.15);}
+    .btn{font-weight:600;font-size:12px;letter-spacing:0.05em;border-radius:3px;transition:all 0.15s;text-transform:uppercase;}
+    .btn-primary{background:linear-gradient(180deg,#ff8c00,#cc7000);color:#1a1a1a;}
+    .btn-primary:hover{background:linear-gradient(180deg,#ffa033,#ff8c00);}
+    .btn-danger{background:linear-gradient(180deg,#e8404f,#cc3945);color:#fff;}
+    .btn-danger:hover{background:linear-gradient(180deg,#ff4757,#e8404f);}
+    .btn-success{background:linear-gradient(180deg,#00b858,#00a04d);color:#fff;}
+    .btn-success:hover{background:linear-gradient(180deg,#00d26a,#00b858);}
+    .btn:disabled{opacity:0.5;cursor:not-allowed;}
+    .status-dot{width:10px;height:10px;border-radius:50%;}
+    .status-dot.online{background:#00d26a;box-shadow:0 0 8px #00d26a;}
+    .status-dot.offline{background:#ff4757;}
+    .stat-card{background:#262626;border:1px solid #3c3c3c;border-radius:4px;padding:16px;}
+    .table-row:hover{background:rgba(255,140,0,0.05);}
+    .tab{padding:8px 16px;font-size:12px;border-bottom:2px solid transparent;transition:all 0.15s;}
+    .tab:hover{color:#ff8c00;}
+    .tab.active{color:#ff8c00;border-bottom-color:#ff8c00;}
+    @keyframes slideDown{0%{opacity:0;transform:translateY(-8px);}100%{opacity:1;transform:translateY(0);}}
+    .slide-down{animation:slideDown 0.25s ease-out;}
+    .notification{backdrop-filter:blur(8px);border-left:3px solid;border-radius:4px;}
+    .notification.success{border-color:#00d26a;background:rgba(0,210,106,0.15);}
+    .notification.error{border-color:#ff4757;background:rgba(255,71,87,0.15);}
+    .notification.info{border-color:#ff8c00;background:rgba(255,140,0,0.15);}
+  </style>
+</head>
+<body class="bg-bb-bg text-bb-text font-mono antialiased">
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,createContext,useContext}=React;
+
+const CONFIG={
+  API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
+  VERSION:'2.0.0'
+};
+
+const formatTime=(t)=>t?new Date(t).toLocaleTimeString('en-US',{hour12:false}):'--:--:--';
+const formatDateTime=(t)=>t?new Date(t).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}):'--';
+
+const AppContext=createContext(null);
+
+function useAdmin(){
+  const[state,setState]=useState({
+    isLoggedIn:false,isAdmin:false,userId:'',displayName:'',
+    activeTab:'overview',
+    stats:null,users:[],sessions:[],auditLog:[],markets:[],
+    notifications:[],loading:false,
+  });
+  
+  const update=(u)=>setState(p=>({...p,...u}));
+  const notify=(message,type='info')=>{
+    const id=Date.now();
+    update({notifications:[...state.notifications,{id,message,type}]});
+    setTimeout(()=>setState(p=>({...p,notifications:p.notifications.filter(n=>n.id!==id)})),4000);
+  };
+  
+  const apiCall=useCallback(async(endpoint,options={})=>{
+    try{
+      const r=await fetch(`${CONFIG.API_URL}${endpoint}`,{...options,credentials:'include',headers:{'Content-Type':'application/json',...options.headers}});
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'Request failed');
+      return d;
+    }catch(e){notify(e.message,'error');throw e;}
+  },[]);
+  
+  const login=useCallback(async(uid,pwd)=>{
+    update({loading:true});
+    try{
+      const d=await apiCall('/auth/login',{method:'POST',body:JSON.stringify({user_id:uid,password:pwd})});
+      if(d.success){
+        if(!d.is_admin){notify('Admin access required','error');return{success:false,error:'Not an admin'};}
+        update({isLoggedIn:true,isAdmin:true,userId:d.user_id,displayName:d.display_name||d.user_id,loading:false});
+        return{success:true};
+      }
+      return{success:false,error:d.error};
+    }catch(e){return{success:false,error:e.message};}
+    finally{update({loading:false});}
+  },[apiCall]);
+  
+  const logout=useCallback(async()=>{
+    try{await apiCall('/auth/logout',{method:'POST'});}catch(e){}
+    setState({isLoggedIn:false,isAdmin:false,userId:'',displayName:'',activeTab:'overview',stats:null,users:[],sessions:[],auditLog:[],markets:[],notifications:[],loading:false});
+  },[apiCall]);
+  
+  const fetchStats=useCallback(async()=>{
+    try{const d=await apiCall('/admin/stats');update({stats:d});}catch(e){}
+  },[apiCall]);
+  
+  const fetchUsers=useCallback(async()=>{
+    try{const d=await apiCall('/admin/users');update({users:d.users||[]});}catch(e){}
+  },[apiCall]);
+  
+  const fetchAudit=useCallback(async(limit=100)=>{
+    try{const d=await apiCall(`/admin/audit?limit=${limit}`);update({auditLog:d.events||[]});}catch(e){}
+  },[apiCall]);
+  
+  const createUser=useCallback(async(userId,password,displayName,isAdmin=false)=>{
+    try{
+      await apiCall('/admin/users/create',{method:'POST',body:JSON.stringify({user_id:userId,password,display_name:displayName,is_admin:isAdmin})});
+      notify(`User ${userId} created`,'success');
+      fetchUsers();
+    }catch(e){}
+  },[apiCall,fetchUsers]);
+  
+  const banUser=useCallback(async(userId,reason='')=>{
+    try{
+      await apiCall('/admin/ban',{method:'POST',body:JSON.stringify({user_id:userId,reason})});
+      notify(`User ${userId} banned`,'success');
+      fetchUsers();
+    }catch(e){}
+  },[apiCall,fetchUsers]);
+  
+  const unbanUser=useCallback(async(userId)=>{
+    try{
+      await apiCall('/admin/unban',{method:'POST',body:JSON.stringify({user_id:userId})});
+      notify(`User ${userId} unbanned`,'success');
+      fetchUsers();
+    }catch(e){}
+  },[apiCall,fetchUsers]);
+  
+  const controlMarket=useCallback(async(marketId,action)=>{
+    try{
+      await apiCall(`/admin/market/${action}`,{method:'POST',body:JSON.stringify({market_id:marketId})});
+      notify(`Market ${marketId}: ${action}`,'success');fetchStats();
+    }catch(e){}
+  },[apiCall,fetchStats]);
+  
+  const resetUser=useCallback(async(userId,marketId)=>{
+    try{
+      await apiCall('/admin/users/reset',{method:'POST',body:JSON.stringify({user_id:userId,market_id:marketId})});
+      notify(`Reset ${userId} in ${marketId}`,'success');
+    }catch(e){}
+  },[apiCall]);
+  
+  useEffect(()=>{
+    if(state.isLoggedIn&&state.isAdmin){
+      fetchStats();fetchUsers();fetchAudit();
+      const i=setInterval(()=>{fetchStats();},10000);
+      return()=>clearInterval(i);
+    }
+  },[state.isLoggedIn,state.isAdmin]);
+  
+  return{state,update,login,logout,fetchStats,fetchUsers,fetchAudit,createUser,banUser,unbanUser,controlMarket,resetUser,notify};
+}
+
+// Icons
+const Icons={
+  Users:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
+  Chart:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
+  Shield:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>,
+  Clock:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+  Refresh:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>,
+  Ban:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>,
+  Check:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>,
+  X:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>,
+  Play:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+  Pause:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
+  Stop:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>,
+  Home:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+};
+
+// Login Page
+function LoginPage(){
+  const{login,state}=useContext(AppContext);
+  const[uid,setUid]=useState('');
+  const[pwd,setPwd]=useState('');
+  const[error,setError]=useState('');
+  const handleSubmit=async(e)=>{e.preventDefault();if(!uid||!pwd)return;setError('');const r=await login(uid,pwd);if(!r.success)setError(r.error);};
+  return(
+    <div className="min-h-screen flex items-center justify-center bg-bb-bg p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-10">
+          <div className="text-4xl font-bold text-bb-orange tracking-[0.3em] mb-2">FORTISIAN</div>
+          <div className="text-bb-yellow text-sm tracking-[0.15em] uppercase">Admin Dashboard</div>
+          <div className="text-bb-mutedDark text-xs mt-2">v{CONFIG.VERSION}</div>
+        </div>
+        <div className="panel p-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {error&&<div className="p-4 border border-bb-red bg-bb-redBg text-bb-red text-sm slide-down">{error}</div>}
+            <div>
+              <label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Admin User ID</label>
+              <input type="text" value={uid} onChange={e=>setUid(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="admin" autoFocus/>
+            </div>
+            <div>
+              <label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Password</label>
+              <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="••••••••"/>
+            </div>
+            <button type="submit" disabled={state.loading||!uid||!pwd} className="w-full py-4 btn btn-primary">{state.loading?'Authenticating...':'Login to Admin'}</button>
+          </form>
+        </div>
+        <div className="text-center mt-6"><a href="fortisian_v2.html" className="text-bb-muted hover:text-bb-orange text-sm">← Back to Trading</a></div>
+      </div>
+    </div>
+  );
+}
+
+// Stat Card
+function StatCard({title,value,subtitle,icon,color='orange'}){
+  const colors={orange:'text-bb-orange',green:'text-bb-green',red:'text-bb-red',cyan:'text-bb-cyan',yellow:'text-bb-yellow',purple:'text-bb-purple'};
+  return(
+    <div className="stat-card">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-bb-muted text-xs uppercase tracking-wider">{title}</span>
+        <span className={colors[color]}>{icon}</span>
+      </div>
+      <div className={`text-3xl font-bold ${colors[color]} tabular-nums`}>{value}</div>
+      {subtitle&&<div className="text-bb-mutedDark text-xs mt-1">{subtitle}</div>}
+    </div>
+  );
+}
+
+// Overview Tab
+function OverviewTab(){
+  const{state,fetchStats}=useContext(AppContext);
+  const s=state.stats||{};
+  return(
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-bb-orange">System Overview</h2>
+        <button onClick={fetchStats} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
+      </div>
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard title="Connected Users" value={s.connected_users||0} icon={<Icons.Users/>} color="green"/>
+        <StatCard title="Active Sessions" value={s.active_sessions||0} icon={<Icons.Shield/>} color="cyan"/>
+        <StatCard title="Total Markets" value={s.total_markets||0} icon={<Icons.Chart/>} color="orange"/>
+        <StatCard title="Uptime" value={s.uptime||'--'} icon={<Icons.Clock/>} color="yellow"/>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="panel p-4">
+          <div className="panel-title mb-4">Market Summary</div>
+          <div className="space-y-3">
+            {(s.markets||[]).map(m=>(
+              <div key={m.market_id} className="flex items-center justify-between p-3 bg-bb-bg rounded">
+                <div>
+                  <div className="font-medium text-bb-white">{m.market_id}</div>
+                  <div className="text-xs text-bb-muted">{m.name}</div>
+                </div>
+                <div className="text-right">
+                  <div className={`text-sm font-medium ${m.status==='active'?'text-bb-green':m.status==='halted'?'text-bb-red':'text-bb-muted'}`}>{m.status?.toUpperCase()}</div>
+                  <div className="text-xs text-bb-muted">{m.order_count||0} orders</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel p-4">
+          <div className="panel-title mb-4">Book Cache Stats</div>
+          <div className="space-y-2">
+            {Object.entries(s.book_cache||{}).map(([k,v])=>(
+              <div key={k} className="flex justify-between py-2 border-b border-bb-border/30">
+                <span className="text-bb-muted text-sm">{k.replace(/_/g,' ')}</span>
+                <span className="text-bb-white font-medium tabular-nums">{typeof v==='number'?v.toLocaleString():v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Users Tab
+function UsersTab(){
+  const{state,fetchUsers,createUser,banUser,unbanUser,resetUser}=useContext(AppContext);
+  const[showCreate,setShowCreate]=useState(false);
+  const[newUser,setNewUser]=useState({userId:'',password:'',displayName:'',isAdmin:false});
+  const[resetModal,setResetModal]=useState(null);
+  
+  const handleCreate=()=>{
+    if(!newUser.userId||!newUser.password)return;
+    createUser(newUser.userId,newUser.password,newUser.displayName||newUser.userId,newUser.isAdmin);
+    setNewUser({userId:'',password:'',displayName:'',isAdmin:false});
+    setShowCreate(false);
+  };
+  
+  return(
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-bb-orange">User Management</h2>
+        <div className="flex gap-2">
+          <button onClick={fetchUsers} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
+          <button onClick={()=>setShowCreate(true)} className="px-4 py-1.5 btn btn-primary text-xs">+ Create User</button>
+        </div>
+      </div>
+      
+      {showCreate&&(
+        <div className="panel p-4 slide-down">
+          <div className="panel-title mb-4">Create New User</div>
+          <div className="grid grid-cols-4 gap-4">
+            <input type="text" placeholder="User ID" value={newUser.userId} onChange={e=>setNewUser({...newUser,userId:e.target.value})} className="px-3 py-2 input-field text-sm"/>
+            <input type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser({...newUser,password:e.target.value})} className="px-3 py-2 input-field text-sm"/>
+            <input type="text" placeholder="Display Name" value={newUser.displayName} onChange={e=>setNewUser({...newUser,displayName:e.target.value})} className="px-3 py-2 input-field text-sm"/>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-bb-muted cursor-pointer">
+                <input type="checkbox" checked={newUser.isAdmin} onChange={e=>setNewUser({...newUser,isAdmin:e.target.checked})} className="rounded"/>
+                Admin
+              </label>
+              <button onClick={handleCreate} className="px-4 py-2 btn btn-success text-xs">Create</button>
+              <button onClick={()=>setShowCreate(false)} className="px-4 py-2 text-bb-muted hover:text-bb-red text-xs">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <div className="panel">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider">
+              <th className="px-4 py-3">User ID</th>
+              <th className="px-4 py-3">Display Name</th>
+              <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Last Login</th>
+              <th className="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.users.map(u=>(
+              <tr key={u.user_id} className="border-b border-bb-border/30 table-row">
+                <td className="px-4 py-3 font-medium text-bb-orange">{u.user_id}</td>
+                <td className="px-4 py-3 text-bb-white">{u.display_name}</td>
+                <td className="px-4 py-3">{u.is_admin?<span className="text-xs px-2 py-0.5 bg-bb-yellowBg text-bb-yellow rounded">ADMIN</span>:<span className="text-bb-muted text-sm">User</span>}</td>
+                <td className="px-4 py-3">{u.is_active?<span className="text-bb-green text-sm">Active</span>:<span className="text-bb-red text-sm">Banned</span>}</td>
+                <td className="px-4 py-3 text-bb-muted text-sm tabular-nums">{formatDateTime(u.last_login)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-2">
+                    {u.is_active?
+                      <button onClick={()=>banUser(u.user_id)} className="text-xs px-2 py-1 text-bb-red hover:bg-bb-redBg rounded" title="Ban user"><Icons.Ban/></button>:
+                      <button onClick={()=>unbanUser(u.user_id)} className="text-xs px-2 py-1 text-bb-green hover:bg-bb-greenBg rounded" title="Unban user"><Icons.Check/></button>
+                    }
+                    <button onClick={()=>setResetModal(u.user_id)} className="text-xs px-2 py-1 text-bb-yellow hover:bg-bb-yellowBg rounded" title="Reset position">Reset</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      
+      {resetModal&&(
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="panel p-6 w-96 slide-down">
+            <div className="panel-title mb-4">Reset User Position</div>
+            <p className="text-bb-muted text-sm mb-4">Reset all orders and positions for <span className="text-bb-orange">{resetModal}</span>?</p>
+            <div className="flex gap-2">
+              <select className="flex-1 px-3 py-2 input-field text-sm">
+                <option value="">All Markets</option>
+                {(state.stats?.markets||[]).map(m=><option key={m.market_id} value={m.market_id}>{m.market_id}</option>)}
+              </select>
+              <button onClick={()=>{resetUser(resetModal);setResetModal(null);}} className="px-4 py-2 btn btn-danger text-xs">Reset</button>
+              <button onClick={()=>setResetModal(null)} className="px-4 py-2 text-bb-muted hover:text-bb-white text-xs">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Markets Tab
+function MarketsTab(){
+  const{state,controlMarket}=useContext(AppContext);
+  return(
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-bb-orange">Market Control</h2>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        {state.markets.map(m=>(
+          <div key={m.market_id} className="panel p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="text-lg font-bold text-bb-white">{m.market_id}</div>
+                <div className="text-sm text-bb-muted">{m.name}</div>
+              </div>
+              <div className={`text-xs px-3 py-1 rounded font-medium ${m.status==='active'?'bg-bb-greenBg text-bb-green':m.status==='halted'?'bg-bb-yellowBg text-bb-yellow':'bg-bb-redBg text-bb-red'}`}>{m.status?.toUpperCase()}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm mb-4">
+              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Orders</div><div className="text-bb-white font-medium">{m.order_count||0}</div></div>
+              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Trades</div><div className="text-bb-white font-medium">{m.trade_count||0}</div></div>
+              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Tick Size</div><div className="text-bb-orange font-medium">{m.tick_size}</div></div>
+              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Max Position</div><div className="text-bb-cyan font-medium">{m.max_position}</div></div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>controlMarket(m.market_id,'start')} disabled={m.status==='active'} className="flex-1 py-2 btn btn-success text-xs flex items-center justify-center gap-1"><Icons.Play/>Start</button>
+              <button onClick={()=>controlMarket(m.market_id,'halt')} disabled={m.status==='halted'} className="flex-1 py-2 btn text-xs flex items-center justify-center gap-1 bg-bb-yellow text-bb-bgDark"><Icons.Pause/>Halt</button>
+              <button onClick={()=>controlMarket(m.market_id,'stop')} disabled={m.status==='closed'} className="flex-1 py-2 btn btn-danger text-xs flex items-center justify-center gap-1"><Icons.Stop/>Stop</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Audit Tab
+function AuditTab(){
+  const{state,fetchAudit}=useContext(AppContext);
+  const colors={login:'text-bb-green',logout:'text-bb-muted',order_submit:'text-bb-cyan',order_cancel:'text-bb-yellow',rate_limited:'text-bb-red',banned:'text-bb-red',error:'text-bb-red'};
+  return(
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-bb-orange">Audit Log</h2>
+        <div className="flex gap-2">
+          <select className="px-3 py-1.5 input-field text-xs" onChange={e=>fetchAudit(parseInt(e.target.value))}>
+            <option value="100">Last 100</option>
+            <option value="500">Last 500</option>
+            <option value="1000">Last 1000</option>
+          </select>
+          <button onClick={()=>fetchAudit()} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
+        </div>
+      </div>
+      <div className="panel max-h-[600px] overflow-y-auto">
+        <table className="w-full">
+          <thead className="sticky top-0 bg-bb-panel">
+            <tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider">
+              <th className="px-4 py-3">Time</th>
+              <th className="px-4 py-3">Event</th>
+              <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">IP</th>
+              <th className="px-4 py-3">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.auditLog.map((e,i)=>(
+              <tr key={i} className="border-b border-bb-border/30 table-row text-sm">
+                <td className="px-4 py-2 text-bb-muted tabular-nums text-xs">{formatDateTime(e.timestamp)}</td>
+                <td className="px-4 py-2"><span className={`${colors[e.event_type]||'text-bb-orange'} font-medium`}>{e.event_type?.replace(/_/g,' ').toUpperCase()}</span></td>
+                <td className="px-4 py-2 text-bb-orange">{e.user_id||'--'}</td>
+                <td className="px-4 py-2 text-bb-mutedDark tabular-nums">{e.ip_address||'--'}</td>
+                <td className="px-4 py-2 text-bb-muted text-xs truncate max-w-xs">{e.market_id&&`Market: ${e.market_id}`}{e.reason&&` | ${e.reason}`}{e.side&&` | ${e.side} ${e.qty}@${e.price}`}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Notifications
+function Notifications(){
+  const{state}=useContext(AppContext);
+  if(state.notifications.length===0)return null;
+  return(
+    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
+      {state.notifications.map(n=>(
+        <div key={n.id} className={`notification ${n.type} px-4 py-3 text-sm font-medium slide-down shadow-lg`}>
+          {n.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Main Dashboard
+function Dashboard(){
+  const{state,update,logout}=useContext(AppContext);
+  const tabs=[
+    {id:'overview',label:'Overview',icon:<Icons.Chart/>},
+    {id:'users',label:'Users',icon:<Icons.Users/>},
+    {id:'sessions',label:'Sessions',icon:<Icons.Shield/>},
+    {id:'markets',label:'Markets',icon:<Icons.Chart/>},
+    {id:'audit',label:'Audit Log',icon:<Icons.Clock/>},
+  ];
+  return(
+    <div className="min-h-screen bg-bb-bg">
+      {/* Header */}
+      <header className="px-6 py-3 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#242424,#1e1e1e)'}}>
+        <div className="flex items-center gap-6">
+          <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
+          <div className="text-bb-yellow text-xs uppercase tracking-wider">Admin Dashboard</div>
+        </div>
+        <div className="flex items-center gap-4">
+          <a href="fortisian_v2.html" className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Home/>Trading</a>
+          <span className="text-bb-muted text-sm">Admin: <span className="text-bb-orange">{state.displayName}</span></span>
+          <button onClick={logout} className="px-3 py-1.5 text-xs text-bb-muted hover:text-bb-red border border-bb-border hover:border-bb-red/50 rounded">LOGOUT</button>
+        </div>
+      </header>
+      
+      {/* Tabs */}
+      <div className="px-6 border-b border-bb-border bg-bb-panel">
+        <div className="flex gap-1">
+          {tabs.map(t=>(
+            <button key={t.id} onClick={()=>update({activeTab:t.id})} className={`tab flex items-center gap-2 ${state.activeTab===t.id?'active':'text-bb-muted'}`}>
+              {t.icon}{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Content */}
+      <main className="p-6">
+        {state.activeTab==='overview'&&<OverviewTab/>}
+        {state.activeTab==='users'&&<UsersTab/>}
+        {state.activeTab==='markets'&&<MarketsTab/>}
+        {state.activeTab==='audit'&&<AuditTab/>}
+      </main>
+      
+      <Notifications/>
+    </div>
+  );
+}
+
+// App
+function App(){
+  const admin=useAdmin();
+  return(
+    <AppContext.Provider value={admin}>
+      {admin.state.isLoggedIn&&admin.state.isAdmin?<Dashboard/>:<LoginPage/>}
+    </AppContext.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
