@@ -488,13 +488,51 @@ function UsersTab(){
 }
 
 function MarketsTab(){
-  const{state,controlMarket}=useContext(AppContext);
+  const{state,controlMarket,apiCall,update,fetchStats}=useContext(AppContext);
   const markets=(state.stats?.markets||[]);
+  const[showCreate,setShowCreate]=useState(false);
+  const[creating,setCreating]=useState(false);
+  const[formData,setFormData]=useState({market_id:'',title:'',description:'',tick_size:'0.01',lot_size:1,max_position:null});
+  
+  const createMarket=useCallback(async()=>{
+    if(!formData.market_id||!formData.title){return;}
+    setCreating(true);
+    try{
+      const d=await apiCall('/admin/markets/create',{method:'POST',body:JSON.stringify(formData)});
+      if(d.success){
+        update({notifications:[...state.notifications,{id:Date.now(),message:`Market ${formData.market_id} created`,type:'success',duration:3000}]});
+        setFormData({market_id:'',title:'',description:'',tick_size:'0.01',lot_size:1,max_position:null});
+        setShowCreate(false);
+        setTimeout(()=>fetchStats(),500);
+      }
+    }catch(e){
+      update({notifications:[...state.notifications,{id:Date.now(),message:`Failed to create market: ${e.message}`,type:'error',duration:5000}]});
+    }finally{
+      setCreating(false);
+    }
+  },[formData,apiCall,state.notifications,update,fetchStats]);
+  
   return(
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold text-bb-orange">Market Control</h2>
+        <button onClick={()=>setShowCreate(!showCreate)} className="px-4 py-2 btn btn-primary text-xs flex items-center gap-2">+ Create Market</button>
       </div>
+      {showCreate&&<div className="panel p-4">
+        <h3 className="text-sm font-bold text-bb-white mb-4">Create New Market</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs text-bb-muted block mb-1">Market ID *</label><input type="text" value={formData.market_id} onChange={e=>setFormData({...formData,market_id:e.target.value.toUpperCase()})} className="w-full px-3 py-2 input-field text-sm" placeholder="AAPL"/></div>
+          <div><label className="text-xs text-bb-muted block mb-1">Title *</label><input type="text" value={formData.title} onChange={e=>setFormData({...formData,title:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="Apple Inc."/></div>
+          <div className="col-span-2"><label className="text-xs text-bb-muted block mb-1">Description</label><input type="text" value={formData.description} onChange={e=>setFormData({...formData,description:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="Tech giant stock"/></div>
+          <div><label className="text-xs text-bb-muted block mb-1">Tick Size</label><input type="text" value={formData.tick_size} onChange={e=>setFormData({...formData,tick_size:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="0.01"/></div>
+          <div><label className="text-xs text-bb-muted block mb-1">Lot Size</label><input type="number" value={formData.lot_size} onChange={e=>setFormData({...formData,lot_size:parseInt(e.target.value)||1})} className="w-full px-3 py-2 input-field text-sm" placeholder="1"/></div>
+          <div><label className="text-xs text-bb-muted block mb-1">Max Position</label><input type="number" value={formData.max_position||''} onChange={e=>setFormData({...formData,max_position:e.target.value?parseInt(e.target.value):null})} className="w-full px-3 py-2 input-field text-sm" placeholder="1000"/></div>
+        </div>
+        <div className="flex gap-2 mt-4">
+          <button onClick={createMarket} disabled={creating||!formData.market_id||!formData.title} className="px-4 py-2 btn btn-primary text-xs">Create</button>
+          <button onClick={()=>setShowCreate(false)} className="px-4 py-2 btn text-xs border border-bb-border">Cancel</button>
+        </div>
+      </div>}
       {markets.length===0?<div className="panel p-8 text-center text-bb-muted">No markets available</div>:
       <div className="grid grid-cols-3 gap-4">
         {markets.map(m=>(

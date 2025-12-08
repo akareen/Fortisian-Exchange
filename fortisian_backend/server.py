@@ -60,6 +60,8 @@ from auth import UserStore, SessionManager as AuthSessionManager, create_auth_sy
 from sweep_orders import SweepOrderManager, SweepAllocation
 from analytics import AdminAnalytics
 from config_loader import get_config_loader, BookCacheConfigData
+from persistence import MongoRepository, MongoConfig
+from persistence_integrated import IntegratedPersistence
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -496,6 +498,7 @@ class TradingServer:
         book_cache_config: BookCacheConfig | None = None,
         user_store: UserStore | None = None,
         user_storage_path: str | None = None,
+        persistence: IntegratedPersistence | None = None,
     ):
         self.exchange = exchange
         self.config = config or ServerConfig()
@@ -527,6 +530,9 @@ class TradingServer:
         
         # Analytics (admin only)
         self.analytics = AdminAnalytics(exchange)
+        
+        # Persistence layer (captures ALL L3 data)
+        self.persistence = persistence
         
         # WebSocket connections by user
         self._connections: dict[str, web.WebSocketResponse] = {}
@@ -568,6 +574,10 @@ class TradingServer:
         self.app.router.add_get("/admin/analytics/market/{market_id}", self._admin_market_analysis_handler)
         self.app.router.add_get("/admin/analytics/leaderboard", self._admin_leaderboard_handler)
         self.app.router.add_get("/admin/analytics/anomalies", self._admin_anomalies_handler)
+        
+        # Market management
+        self.app.router.add_get("/markets", self._list_markets_handler)
+        self.app.router.add_post("/admin/markets/create", self._admin_create_market_handler)
     
     def _setup_session(self):
         """Set up session middleware."""
@@ -1549,14 +1559,139 @@ class TradingServer:
             "total": len(anomalies),
         })
     
+    async def _list_markets_handler(self, request: web.Request) -> web.Response:
+        """List all available markets (public endpoint)."""
+        markets = []
+        for market in self.exchange.list_markets():
+            markets.append({
+                "market_id": str(market.id),
+                "title": market.title,
+                "description": market.config.description,
+                "status": market.status.value,
+                "tick_size": str(market.config.tick_size),
+                "lot_size": market.config.lot_size,
+                "max_position": market.config.max_position,
+            })
+        return web.json_response({"markets": markets})
+    
+    async def _admin_create_market_handler(self, request: web.Request) -> web.Response:
+        """Create a new market (admin only)."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        try:
+            data = await request.json()
+            market_id = data.get("market_id")
+            title = data.get("title")
+            description = data.get("description", "")
+            tick_size = data.get("tick_size", "0.01")
+            lot_size = data.get("lot_size", 1)
+            max_position = data.get("max_position")
+            
+            if not market_id or not title:
+                return web.json_response(
+                    {"error": "market_id and title are required"},
+                    status=400
+                )
+            
+            # Create market
+            market = self.exchange.create_market(
+                market_id=market_id,
+                title=title,
+                description=description,
+                tick_size=tick_size,
+                lot_size=lot_size,
+                max_position=max_position,
+            )
+            
+            # Start market automatically
+            self.exchange.start_market(market_id)
+            
+            # Store in persistence if available
+            if self.persistence:
+                await self.persistence._store_market_state(market)
+            
+            # Broadcast market list update to all connected clients
+            await self._broadcast_market_list_update()
+            
+            self.audit.log(
+                AuditEventType.ADMIN_ACTION,
+                action="market_create",
+                market_id=market_id,
+                success=True,
+            )
+            
+            return web.json_response({
+                "success": True,
+                "market": {
+                    "market_id": str(market.id),
+                    "title": market.title,
+                    "description": market.config.description,
+                    "status": market.status.value,
+                }
+            })
+            
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        except Exception as e:
+            logger.error(f"Error creating market: {e}")
+            return web.json_response({"error": "Internal server error"}, status=500)
+    
+    async def _broadcast_market_list_update(self) -> None:
+        """Broadcast market list update to all connected WebSocket clients."""
+        markets = []
+        for market in self.exchange.list_markets():
+            markets.append({
+                "market_id": str(market.id),
+                "title": market.title,
+                "description": market.config.description,
+                "status": market.status.value,
+            })
+        
+        message = {
+            "type": "markets_updated",
+            "data": {"markets": markets}
+        }
+        
+        # Send to all connected clients
+        disconnected = []
+        for user_id, ws in self._connections.items():
+            try:
+                await ws.send_json(message)
+            except Exception:
+                disconnected.append(user_id)
+        
+        # Clean up disconnected clients
+        for user_id in disconnected:
+            self._connections.pop(user_id, None)
+    
     # ─────────────────────────────────────────────────────────────────────────
     # Server Control
     # ─────────────────────────────────────────────────────────────────────────
+    
+    async def start_persistence(self) -> None:
+        """Start persistence layer."""
+        if self.persistence:
+            await self.persistence.start()
+    
+    async def stop_persistence(self) -> None:
+        """Stop persistence layer."""
+        if self.persistence:
+            await self.persistence.stop()
     
     def run(self):
         """Run the server."""
         print(f"Starting trading server on {self.config.host}:{self.config.port}")
         print(f"Admin token: {self.config.admin_token}")
+        
+        # Start persistence in background
+        if self.persistence:
+            loop = asyncio.get_event_loop()
+            loop.create_task(self.persistence.start())
+        
+        # Start all markets
+        self.exchange.start_all_markets()
+        
         web.run_app(self.app, host=self.config.host, port=self.config.port)
 
 
@@ -1585,26 +1720,35 @@ def create_demo_exchange() -> Exchange:
 
 @web.middleware
 async def cors_middleware(request, handler):
+    """Permissive CORS middleware - allows any origin."""
     if request.method == "OPTIONS":
         resp = web.Response(status=200)
     else:
         resp = await handler(request)
 
-    resp.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+    # Get origin from request, allow any origin
+    origin = request.headers.get("Origin", "*")
+    resp.headers["Access-Control-Allow-Origin"] = origin
     resp.headers["Access-Control-Allow-Credentials"] = "true"
-    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-    # Explicitly allow Content-Type for JSON requests
-    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+    resp.headers["Access-Control-Expose-Headers"] = "Content-Type, Authorization"
     return resp
 
 
 if __name__ == "__main__":
     import argparse
+    from persistence import ExchangeRebuilder
     
     parser = argparse.ArgumentParser(description="Trading Exchange Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
     parser.add_argument("--admin-token", help="Admin token (generated if not provided)")
+    parser.add_argument("--mode", choices=["fresh", "rebuild"], default="fresh",
+                        help="Server mode: 'fresh' starts new exchange, 'rebuild' restores from MongoDB")
+    parser.add_argument("--mongo-uri", default="mongodb://localhost:27017", help="MongoDB URI")
+    parser.add_argument("--mongo-db", default="exchange", help="MongoDB database name")
+    parser.add_argument("--no-persistence", action="store_true", help="Disable persistence")
     args = parser.parse_args()
     
     # Configure logging
@@ -1620,8 +1764,27 @@ if __name__ == "__main__":
     anomaly_config = config_loader.get_anomaly_config()
     book_cache_config_data = config_loader.get_book_cache_config()
     
-    # Create exchange
-    exchange = create_demo_exchange()
+    # Create or rebuild exchange based on mode
+    async def create_exchange():
+        if args.mode == "rebuild" and not args.no_persistence:
+            print("Rebuilding exchange from MongoDB...")
+            mongo_config = MongoConfig(uri=args.mongo_uri, database=args.mongo_db)
+            repo = MongoRepository(mongo_config)
+            await repo.connect()
+            try:
+                rebuilder = ExchangeRebuilder(repo)
+                exchange = await rebuilder.rebuild(from_snapshot=True)
+                print(f"Rebuilt exchange: {len(exchange.list_markets())} markets")
+                return exchange
+            finally:
+                await repo.disconnect()
+        else:
+            print("Creating fresh exchange...")
+            return create_demo_exchange()
+    
+    # Run async exchange creation
+    loop = asyncio.get_event_loop()
+    exchange = loop.run_until_complete(create_exchange())
     
     # Create server config from loaded config
     config = ServerConfig(
@@ -1647,10 +1810,21 @@ if __name__ == "__main__":
         snapshot_interval=book_cache_config_data.snapshot_interval,
     )
     
-    # Create and run server
-    server = TradingServer(exchange, config, book_cache_config=book_cache_config)
+    # Setup persistence if enabled
+    persistence = None
+    if not args.no_persistence:
+        mongo_config = MongoConfig(uri=args.mongo_uri, database=args.mongo_db)
+        persistence = IntegratedPersistence(exchange, mongo_config, enabled=True)
+        print("Persistence enabled - capturing ALL L3 data")
+    else:
+        print("Persistence disabled")
     
-    # Start all markets
-    exchange.start_all_markets()
+    # Create and run server
+    server = TradingServer(
+        exchange, 
+        config, 
+        book_cache_config=book_cache_config,
+        persistence=persistence
+    )
     
     server.run()

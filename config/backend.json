@@ -21,6 +21,12 @@
     "max_depth": 50,
     "snapshot_interval": 5.0
   },
+  "persistence": {
+    "enabled": true,
+    "mongo_uri": "mongodb://localhost:27017",
+    "database": "exchange",
+    "l3_snapshot_interval": 60.0
+  },
   "markets": [
     {
       "market_id": "AAPL",

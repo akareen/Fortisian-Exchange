@@ -155,7 +155,7 @@ const AppContext=createContext(null);
 const initialState={
   isLoggedIn:false,userId:'',displayName:'',isAdmin:false,
   wsStatus:'disconnected',latency:null,
-  currentMarket:'AAPL',marketStatus:'active',availableMarkets:['AAPL','BTCUSD','GOLD'],marketInfo:{},
+  currentMarket:null,marketStatus:'active',availableMarkets:[],marketInfo:{},
   bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,bookStats:{bidLevels:0,askLevels:0,bidVolume:0,askVolume:0},
   openOrders:[],position:{net_qty:0,realized_pnl:'0',total_bought:0,total_sold:0,trade_count:0},
   recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0,
@@ -171,6 +171,18 @@ function reducer(state,action){
     case'SET_LATENCY':return{...state,latency:action.payload};
     case'SET_MARKET':return{...state,currentMarket:action.payload,bids:{},asks:{},sequence:0,bestBid:null,bestAsk:null,spread:null,openOrders:[],recentTrades:[],priceHistory:[],lastTradePrice:null,lastTradeSide:null,dayHigh:null,dayLow:null,dayOpen:null,dayVolume:0};
     case'SET_MARKET_INFO':return{...state,marketInfo:{...state.marketInfo,[action.payload.marketId]:{title:action.payload.title,description:action.payload.description}}};
+    case'SET_AVAILABLE_MARKETS':{
+      const markets=action.payload||[];
+      const marketIds=markets.map(m=>m.market_id||m);
+      const newMarketInfo={};
+      markets.forEach(m=>{
+        if(m.market_id){
+          newMarketInfo[m.market_id]={title:m.title||m.market_id,description:m.description||''};
+        }
+      });
+      const firstMarket=marketIds[0]||null;
+      return{...state,availableMarkets:marketIds,marketInfo:{...state.marketInfo,...newMarketInfo},currentMarket:state.currentMarket||firstMarket};
+    }
     case 'BOOK_SNAPSHOT': {
       const bids = {};
       const asks = {};
@@ -327,6 +339,12 @@ class WSManager{
         }
         break;
       }
+      case'markets_updated':{
+        if(data.markets){
+          this.dispatch({type:'SET_AVAILABLE_MARKETS',payload:data.markets});
+        }
+        break;
+      }
       case'error':soundManager.playAlert('error');this.dispatch({type:'ADD_NOTIFICATION',payload:{message:data.message||'Error',type:'error',duration:5000}});break;
     }
   }
@@ -343,7 +361,8 @@ function useApp(){
   useEffect(()=>{state.notifications.forEach(n=>{if(n.duration>0)setTimeout(()=>dispatch({type:'REMOVE_NOTIFICATION',payload:n.id}),n.duration);});},[state.notifications]);
   useEffect(()=>{const h=()=>dispatch({type:'CLOSE_MENUS'});document.addEventListener('click',h);return()=>document.removeEventListener('click',h);},[]);
   
-  const login=useCallback(async(uid,pwd)=>{try{const r=await fetch(`${CONFIG.API_URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({user_id:uid,password:pwd})});const d=await r.json();if(r.ok&&d.success){dispatch({type:'SET_AUTH',payload:{userId:d.user_id,displayName:d.display_name||d.user_id,isAdmin:d.is_admin||false}});setTimeout(()=>{wsRef.current?.connect();setTimeout(()=>wsRef.current?.subscribe(state.currentMarket),300);},100);return{success:true};}return{success:false,error:d.error||'Login failed'};}catch(e){return{success:false,error:'Connection failed'};}},[state.currentMarket]);
+  const fetchMarkets=useCallback(async()=>{try{const r=await fetch(`${CONFIG.API_URL}/markets`,{method:'GET',credentials:'include'});if(r.ok){const d=await r.json();if(d.markets){dispatch({type:'SET_AVAILABLE_MARKETS',payload:d.markets});if(d.markets.length>0&&!state.currentMarket){dispatch({type:'SET_MARKET',payload:d.markets[0].market_id});}}}}catch(e){console.error('Failed to fetch markets:',e);}},[state.currentMarket]);
+  const login=useCallback(async(uid,pwd)=>{try{const r=await fetch(`${CONFIG.API_URL}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({user_id:uid,password:pwd})});const d=await r.json();if(r.ok&&d.success){dispatch({type:'SET_AUTH',payload:{userId:d.user_id,displayName:d.display_name||d.user_id,isAdmin:d.is_admin||false}});await fetchMarkets();setTimeout(()=>{wsRef.current?.connect();setTimeout(()=>{if(state.currentMarket)wsRef.current?.subscribe(state.currentMarket);},300);},100);return{success:true};}return{success:false,error:d.error||'Login failed'};}catch(e){return{success:false,error:'Connection failed'};}},[state.currentMarket,fetchMarkets]);
   const logout=useCallback(async()=>{try{await fetch(`${CONFIG.API_URL}/auth/logout`,{method:'POST',credentials:'include'});}catch(e){}wsRef.current?.disconnect();dispatch({type:'LOGOUT'});},[]);
   const submitOrder=useCallback((side,price,qty,tif='gtc')=>{wsRef.current?.send('order_submit',{market_id:state.currentMarket,side:side.toLowerCase(),price:price.toString(),qty:parseInt(qty,10),time_in_force:tif.toLowerCase()},getRid());},[state.currentMarket,getRid]);
   const cancelOrder=useCallback((oid)=>wsRef.current?.send('order_cancel',{market_id:state.currentMarket,order_id:oid}),[state.currentMarket]);
@@ -353,7 +372,8 @@ function useApp(){
   const toggleSound=useCallback(()=>dispatch({type:'TOGGLE_SOUND'}),[]);
   const toggleUserMenu=useCallback((e)=>{e?.stopPropagation();dispatch({type:'TOGGLE_USER_MENU'});},[]);
   
-  useEffect(()=>{const h=(e)=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();setOrderForm({orderFormPrice:'',orderFormQty:''});}return;}if(e.key==='m'){e.preventDefault();toggleSound();}if(e.key==='c'&&state.openOrders.length>0){e.preventDefault();cancelAllOrders();}if(e.key>='1'&&e.key<='3'){const i=parseInt(e.key)-1;if(state.availableMarkets[i]){e.preventDefault();switchMarket(state.availableMarkets[i]);}}if(e.key==='Escape')setOrderForm({orderFormPrice:'',orderFormQty:''});};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[state.openOrders,state.availableMarkets,cancelAllOrders,switchMarket,toggleSound,setOrderForm]);
+  useEffect(()=>{fetchMarkets();},[]);
+  useEffect(()=>{const h=(e)=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();setOrderForm({orderFormPrice:'',orderFormQty:''});}return;}if(e.key==='m'){e.preventDefault();toggleSound();}if(e.key==='c'&&state.openOrders.length>0){e.preventDefault();cancelAllOrders();}if(e.key>='1'&&e.key<='9'){const i=parseInt(e.key)-1;if(state.availableMarkets[i]){e.preventDefault();switchMarket(state.availableMarkets[i]);}}if(e.key==='Escape')setOrderForm({orderFormPrice:'',orderFormQty:''});};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[state.openOrders,state.availableMarkets,cancelAllOrders,switchMarket,toggleSound,setOrderForm]);
   return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu};
 }
 
