@@ -1,0 +1,19 @@
+{
+  "admins": [
+    {"user_id": "trader_test_1", "password": "trader123", "display_name": "Trader Test 1"},
+    {"user_id": "trader_test_2", "password": "trader234", "display_name": "Trader Test 2"},
+    {"user_id": "trader_test_3", "password": "trader345", "display_name": "Trader Test 3"}
+  ],
+  "users": [
+    {"user_id": "user_test_1", "password": "user123", "display_name": "User Test 1", "team": "Team Alpha"},
+    {"user_id": "user_test_2", "password": "user234", "display_name": "User Test 2", "team": "Team Alpha"},
+    {"user_id": "user_test_3", "password": "user345", "display_name": "User Test 3", "team": "Team Beta"},
+    {"user_id": "user_test_4", "password": "user456", "display_name": "User Test 4", "team": "Team Beta"},
+    {"user_id": "user_test_5", "password": "user567", "display_name": "User Test 5", "team": "Team Gamma"},
+    {"user_id": "user_test_6", "password": "user678", "display_name": "User Test 6", "team": "Team Gamma"},
+    {"user_id": "user_test_7", "password": "user789", "display_name": "User Test 7", "team": null},
+    {"user_id": "user_test_8", "password": "user890", "display_name": "User Test 8", "team": null},
+    {"user_id": "user_test_9", "password": "user901", "display_name": "User Test 9", "team": null},
+    {"user_id": "user_test_10", "password": "user012", "display_name": "User Test 10", "team": null}
+  ]
+}
