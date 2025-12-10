@@ -937,6 +937,9 @@ class ExchangePersistence:
         limit: int = 1000,
     ) -> list[dict]:
         """Get all orders for a user (admin dashboard)."""
+        if not self._db:
+            raise RuntimeError("Persistence not started - call start() first")
+        
         query = {"user_id": user_id}
         if market_id:
             query["market_id"] = market_id
@@ -955,6 +958,9 @@ class ExchangePersistence:
         limit: int = 1000,
     ) -> list[dict]:
         """Get all trades involving a user (admin dashboard)."""
+        if not self._db:
+            raise RuntimeError("Persistence not started - call start() first")
+        
         query = {"$or": [{"buyer_id": user_id}, {"seller_id": user_id}]}
         if market_id:
             query["market_id"] = market_id

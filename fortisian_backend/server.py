@@ -60,8 +60,11 @@ from auth import UserStore, SessionManager as AuthSessionManager, create_auth_sy
 from sweep_orders import SweepOrderManager, SweepAllocation
 from analytics import AdminAnalytics
 from config_loader import get_config_loader, BookCacheConfigData
-from persistence import MongoRepository, MongoConfig
-from persistence_integrated import IntegratedPersistence
+from persistence import (
+    PersistenceConfig, 
+    ExchangePersistence, 
+    ExchangeRebuilder,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -498,7 +501,7 @@ class TradingServer:
         book_cache_config: BookCacheConfig | None = None,
         user_store: UserStore | None = None,
         user_storage_path: str | None = None,
-        persistence: IntegratedPersistence | None = None,
+        persistence: ExchangePersistence | None = None,
     ):
         self.exchange = exchange
         self.config = config or ServerConfig()
@@ -1693,7 +1696,7 @@ class TradingServer:
             
             # Store in persistence if available
             if self.persistence:
-                await self.persistence._store_market_state(market)
+                await self.persistence._persist_market(market)
             
             # Broadcast market list update to all connected clients
             await self._broadcast_market_list_update()
@@ -1848,20 +1851,20 @@ if __name__ == "__main__":
     anomaly_config = config_loader.get_anomaly_config()
     book_cache_config_data = config_loader.get_book_cache_config()
     
+    # Create persistence config
+    persistence_config = PersistenceConfig(
+        mongo_uri=args.mongo_uri,
+        database=args.mongo_db,
+    )
+    
     # Create or rebuild exchange based on mode
     async def create_exchange():
         if args.mode == "rebuild" and not args.no_persistence:
             print("Rebuilding exchange from MongoDB...")
-            mongo_config = MongoConfig(uri=args.mongo_uri, database=args.mongo_db)
-            repo = MongoRepository(mongo_config)
-            await repo.connect()
-            try:
-                rebuilder = ExchangeRebuilder(repo)
-                exchange = await rebuilder.rebuild(from_snapshot=True)
-                print(f"Rebuilt exchange: {len(exchange.list_markets())} markets")
-                return exchange
-            finally:
-                await repo.disconnect()
+            rebuilder = ExchangeRebuilder(persistence_config)
+            exchange = await rebuilder.rebuild(from_snapshot=True)
+            print(f"Rebuilt exchange: {len(exchange.list_markets())} markets")
+            return exchange
         else:
             print("Creating fresh exchange...")
             return create_demo_exchange()
@@ -1897,8 +1900,7 @@ if __name__ == "__main__":
     # Setup persistence if enabled
     persistence = None
     if not args.no_persistence:
-        mongo_config = MongoConfig(uri=args.mongo_uri, database=args.mongo_db)
-        persistence = IntegratedPersistence(exchange, mongo_config, enabled=True)
+        persistence = ExchangePersistence(exchange, persistence_config, enabled=True)
         print("Persistence enabled - capturing ALL L3 data")
     else:
         print("Persistence disabled")
