@@ -373,8 +373,10 @@ function useApp(){
   const toggleUserMenu=useCallback((e)=>{e?.stopPropagation();dispatch({type:'TOGGLE_USER_MENU'});},[]);
   
   useEffect(()=>{fetchMarkets();},[]);
+  // Refresh markets periodically when logged in
+  useEffect(()=>{if(state.isLoggedIn){const interval=setInterval(()=>{fetchMarkets();},30000);return()=>clearInterval(interval);}},[state.isLoggedIn,fetchMarkets]);
   useEffect(()=>{const h=(e)=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();setOrderForm({orderFormPrice:'',orderFormQty:''});}return;}if(e.key==='m'){e.preventDefault();toggleSound();}if(e.key==='c'&&state.openOrders.length>0){e.preventDefault();cancelAllOrders();}if(e.key>='1'&&e.key<='9'){const i=parseInt(e.key)-1;if(state.availableMarkets[i]){e.preventDefault();switchMarket(state.availableMarkets[i]);}}if(e.key==='Escape')setOrderForm({orderFormPrice:'',orderFormQty:''});};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[state.openOrders,state.availableMarkets,cancelAllOrders,switchMarket,toggleSound,setOrderForm]);
-  return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu};
+  return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu,fetchMarkets};
 }
 
 // Icons (same as before)
@@ -426,13 +428,14 @@ function LoginPage(){
 
 // Header (same as before with fixed admin URL)
 function Header(){
-  const{state,logout,switchMarket,toggleSound,toggleUserMenu}=useContext(AppContext);
+  const{state,logout,switchMarket,toggleSound,toggleUserMenu,fetchMarkets}=useContext(AppContext);
   return(
     <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#18181c,#101013)'}}>
       <div className="flex items-center gap-5">
         <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
         <div className="flex items-center gap-1">
           {state.availableMarkets.map((m,i)=>(<button key={m} onClick={()=>switchMarket(m)} className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${state.currentMarket===m?'bg-bb-orange/20 text-bb-orange border border-bb-orange/30':'text-bb-muted hover:text-bb-text hover:bg-bb-panelHover border border-transparent'}`}>{m}</button>))}
+          <button onClick={fetchMarkets} className="px-2 py-1.5 text-xs text-bb-muted hover:text-bb-orange rounded transition-all" title="Refresh Markets"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
         </div>
         {state.marketInfo[state.currentMarket]&&(
           <div className="flex flex-col">

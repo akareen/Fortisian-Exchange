@@ -568,6 +568,10 @@ class TradingServer:
         self.app.router.add_post("/admin/users/bulk_create", self._admin_bulk_create_users_handler)
         self.app.router.add_get("/admin/users", self._admin_list_users_handler)
         
+        # Admin user activity (orders and trades)
+        self.app.router.add_get("/admin/user/{user_id}/orders", self._admin_user_orders_handler)
+        self.app.router.add_get("/admin/user/{user_id}/trades", self._admin_user_trades_handler)
+        
         # Admin analytics
         self.app.router.add_get("/admin/analytics/trades", self._admin_trades_handler)
         self.app.router.add_get("/admin/analytics/user/{user_id}", self._admin_user_analysis_handler)
@@ -1475,6 +1479,86 @@ class TradingServer:
         return web.json_response({
             "users": [u.to_dict() for u in users],
             "total": len(users),
+        })
+    
+    async def _admin_user_orders_handler(self, request: web.Request) -> web.Response:
+        """Get all orders for a user (admin only) - from persistence or exchange."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        user_id = request.match_info["user_id"]
+        market_id = request.query.get("market_id")
+        limit = int(request.query.get("limit", 100))
+        
+        orders = []
+        
+        # Try persistence layer first (has all historical data)
+        if self.persistence:
+            try:
+                orders = await self.persistence.get_all_orders_for_user(
+                    user_id=user_id,
+                    market_id=market_id,
+                    limit=limit,
+                )
+            except Exception as e:
+                logging.warning(f"Failed to get orders from persistence: {e}")
+        
+        # Fall back to exchange for open orders
+        if not orders:
+            if market_id:
+                exchange_orders = self.exchange.get_user_orders(market_id, user_id)
+                orders = [o.to_dict() for o in exchange_orders]
+            else:
+                all_orders = self.exchange.get_all_user_orders(user_id)
+                for mid, ords in all_orders.items():
+                    orders.extend([o.to_dict() for o in ords])
+        
+        return web.json_response({
+            "user_id": user_id,
+            "market_id": market_id,
+            "orders": orders,
+            "total": len(orders),
+        })
+    
+    async def _admin_user_trades_handler(self, request: web.Request) -> web.Response:
+        """Get all trades for a user (admin only) - from persistence or analytics."""
+        if not await self._require_admin(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        
+        user_id = request.match_info["user_id"]
+        market_id = request.query.get("market_id")
+        limit = int(request.query.get("limit", 100))
+        
+        trades = []
+        
+        # Try persistence layer first (has all historical data)
+        if self.persistence:
+            try:
+                trades = await self.persistence.get_all_trades_for_user(
+                    user_id=user_id,
+                    market_id=market_id,
+                    limit=limit,
+                )
+            except Exception as e:
+                logging.warning(f"Failed to get trades from persistence: {e}")
+        
+        # Fall back to analytics
+        if not trades:
+            all_trades = self.analytics.export_all_trades(
+                market_id=market_id,
+                include_user_ids=True,
+            )
+            # Filter to user's trades
+            trades = [
+                t for t in all_trades
+                if t.get("buyer_id") == user_id or t.get("seller_id") == user_id
+            ][:limit]
+        
+        return web.json_response({
+            "user_id": user_id,
+            "market_id": market_id,
+            "trades": trades,
+            "total": len(trades),
         })
     
     # ─────────────────────────────────────────────────────────────────────────

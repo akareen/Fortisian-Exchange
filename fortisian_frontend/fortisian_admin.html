@@ -59,6 +59,7 @@
     .notification.success{border-color:#00d26a;background:rgba(0,210,106,0.15);}
     .notification.error{border-color:#ff4757;background:rgba(255,71,87,0.15);}
     .notification.info{border-color:#ffa028;background:rgba(255,160,40,0.15);}
+    select.input-field option{background:#101013;color:#ffa028;}
   </style>
 </head>
 <body class="bg-bb-bg text-bb-text font-mono antialiased">
@@ -66,62 +67,43 @@
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,createContext,useContext}=React;
 
-// Load config asynchronously - will be set after config loads
 let CONFIG={
   API_URL:window.location.hostname==='localhost'?'http://localhost:8080':`${window.location.protocol}//${window.location.hostname}:8080`,
-  VERSION:'2.1.1'
+  VERSION:'2.2.0'
 };
 
-// Load config from file
 (async()=>{
   try{
     await window.configLoader?.load();
     const frontendConfig=window.configLoader?.getFrontendConfig();
-    if(frontendConfig){
-      CONFIG={...CONFIG,API_URL:frontendConfig.API_URL||CONFIG.API_URL,VERSION:frontendConfig.VERSION||CONFIG.VERSION};
-    }
-  }catch(e){
-    console.warn('Failed to load config, using defaults:',e);
-  }
+    if(frontendConfig){CONFIG={...CONFIG,API_URL:frontendConfig.API_URL||CONFIG.API_URL,VERSION:frontendConfig.VERSION||CONFIG.VERSION};}
+  }catch(e){console.warn('Failed to load config, using defaults:',e);}
 })();
 
 const formatTime=(t)=>t?new Date(t).toLocaleTimeString('en-US',{hour12:false}):'--:--:--';
 const formatDateTime=(t)=>t?new Date(t).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}):'--';
+const formatPrice=(p)=>{if(p===null||p===undefined||p==='--')return'--';const n=parseFloat(p);return isNaN(n)?'--':n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};
 
 const AppContext=createContext(null);
 
 function useAdmin(){
   const[state,setState]=useState({
-    isLoggedIn:false,isAdmin:false,userId:'',displayName:'',
-    activeTab:'overview',
-    stats:null,users:[],sessions:[],auditLog:[],
-    leaderboard:[],marketAnalytics:{},userAnalytics:{},anomalies:[],
-    selectedMarket:null,selectedUser:null,
+    isLoggedIn:false,isAdmin:false,userId:'',displayName:'',activeTab:'overview',
+    stats:null,users:[],sessions:[],auditLog:[],leaderboard:[],marketAnalytics:{},userAnalytics:{},anomalies:[],
+    selectedMarket:null,selectedUser:null,selectedUserOrders:[],selectedUserTrades:[],selectedUserLoading:false,
     notifications:[],loading:false,
   });
   
   const update=(u)=>setState(p=>({...p,...u}));
-  const notify=(message,type='info')=>{
-    const id=Date.now();
-    update({notifications:[...state.notifications,{id,message,type}]});
-    setTimeout(()=>setState(p=>({...p,notifications:p.notifications.filter(n=>n.id!==id)})),4000);
-  };
+  const notify=(message,type='info')=>{const id=Date.now();setState(p=>({...p,notifications:[...p.notifications,{id,message,type}]}));setTimeout(()=>setState(p=>({...p,notifications:p.notifications.filter(n=>n.id!==id)})),4000);};
   
   const apiCall=useCallback(async(endpoint,options={})=>{
     try{
       const r=await fetch(`${CONFIG.API_URL}${endpoint}`,{...options,credentials:'include',headers:{'Content-Type':'application/json',...options.headers}});
-      if(!r.ok){
-        let error='Request failed';
-        try{const d=await r.json();error=d.error||error;}catch(e){}
-        throw new Error(error);
-      }
-      const d=await r.json();
-      return d;
-    }catch(e){
-      notify(e.message,'error');
-      throw e;
-    }
-  },[state.notifications]);
+      if(!r.ok){let error='Request failed';try{const d=await r.json();error=d.error||error;}catch(e){}throw new Error(error);}
+      return await r.json();
+    }catch(e){notify(e.message,'error');throw e;}
+  },[]);
   
   const login=useCallback(async(uid,pwd)=>{
     update({loading:true});
@@ -132,168 +114,52 @@ function useAdmin(){
         update({isLoggedIn:true,isAdmin:true,userId:d.user_id,displayName:d.display_name||d.user_id,loading:false});
         return{success:true};
       }
-      update({loading:false});
-      return{success:false,error:d.error};
-    }catch(e){
-      update({loading:false});
-      return{success:false,error:e.message};
-    }
+      update({loading:false});return{success:false,error:d.error};
+    }catch(e){update({loading:false});return{success:false,error:e.message};}
   },[apiCall]);
   
   const logout=useCallback(async()=>{
     try{await apiCall('/auth/logout',{method:'POST'});}catch(e){}
-    setState({isLoggedIn:false,isAdmin:false,userId:'',displayName:'',activeTab:'overview',stats:null,users:[],sessions:[],auditLog:[],notifications:[],loading:false});
+    setState({isLoggedIn:false,isAdmin:false,userId:'',displayName:'',activeTab:'overview',stats:null,users:[],sessions:[],auditLog:[],notifications:[],loading:false,selectedUserOrders:[],selectedUserTrades:[],selectedUser:null,leaderboard:[],marketAnalytics:{},userAnalytics:{},anomalies:[],selectedMarket:null});
   },[apiCall]);
   
   const fetchStats=useCallback(async()=>{
     try{
       const d=await apiCall('/admin/stats');
-      // Map the response to expected format
-      const markets=d.market_stats?Object.entries(d.market_stats).map(([id,m])=>({
-        market_id:id,
-        name:m.title||id,
-        status:m.status,
-        order_count:m.orders||0,
-        trade_count:m.trades||0,
-        tick_size:m.tick_size||'0.01',
-        max_position:m.max_position||1000
-      })):[];
+      const markets=d.market_stats?Object.entries(d.market_stats).map(([id,m])=>({market_id:id,name:m.title||id,status:m.status,order_count:m.orders||0,trade_count:m.trades||0,tick_size:m.tick_size||'0.01',max_position:m.max_position||1000})):[];
       update({stats:{...d,markets}});
     }catch(e){console.error('Failed to fetch stats',e);}
   },[apiCall]);
   
-  const fetchUsers=useCallback(async()=>{
-    try{const d=await apiCall('/admin/users');update({users:d.users||[]});}catch(e){console.error('Failed to fetch users',e);}
+  const fetchUsers=useCallback(async()=>{try{const d=await apiCall('/admin/users');update({users:d.users||[]});}catch(e){console.error('Failed to fetch users',e);}},[apiCall]);
+  const fetchAudit=useCallback(async(limit=100)=>{try{const d=await apiCall(`/admin/audit?limit=${limit}`);update({auditLog:d.events||[]});}catch(e){console.error('Failed to fetch audit',e);}},[apiCall]);
+  const fetchLeaderboard=useCallback(async(marketId=null)=>{try{const url=marketId?`/admin/analytics/leaderboard?market_id=${marketId}`:'/admin/analytics/leaderboard';const d=await apiCall(url);update({leaderboard:d.leaderboard||[]});}catch(e){console.error('Failed to fetch leaderboard',e);}},[apiCall]);
+  const fetchAnomalies=useCallback(async()=>{try{const d=await apiCall('/admin/analytics/anomalies');update({anomalies:d.anomalies||[]});}catch(e){console.error('Failed to fetch anomalies',e);}},[apiCall]);
+  
+  const fetchUserActivity=useCallback(async(userId,marketId=null)=>{
+    if(!userId){update({selectedUser:null,selectedUserOrders:[],selectedUserTrades:[],selectedUserLoading:false});return;}
+    update({selectedUser:userId,selectedUserLoading:true,selectedUserOrders:[],selectedUserTrades:[]});
+    try{
+      const ordersUrl=marketId?`/admin/user/${userId}/orders?market_id=${marketId}`:`/admin/user/${userId}/orders`;
+      const tradesUrl=marketId?`/admin/user/${userId}/trades?market_id=${marketId}`:`/admin/user/${userId}/trades`;
+      const [ordersRes,tradesRes]=await Promise.allSettled([apiCall(ordersUrl),apiCall(tradesUrl)]);
+      const orders=ordersRes.status==='fulfilled'?(ordersRes.value.orders||[]):[];
+      const trades=tradesRes.status==='fulfilled'?(tradesRes.value.trades||[]):[];
+      update({selectedUserOrders:orders,selectedUserTrades:trades,selectedUserLoading:false});
+    }catch(e){console.error('Failed to fetch user activity',e);update({selectedUserLoading:false});}
   },[apiCall]);
   
-  const fetchAudit=useCallback(async(limit=100)=>{
-    try{const d=await apiCall(`/admin/audit?limit=${limit}`);update({auditLog:d.events||[]});}catch(e){console.error('Failed to fetch audit',e);}
-  },[apiCall]);
+  const createUser=useCallback(async(userId,password,displayName,isAdmin=false)=>{try{await apiCall('/admin/users/create',{method:'POST',body:JSON.stringify({user_id:userId,password,display_name:displayName,is_admin:isAdmin})});notify(`User ${userId} created`,'success');fetchUsers();}catch(e){}},[apiCall,fetchUsers]);
+  const banUser=useCallback(async(userId,reason='')=>{try{await apiCall('/admin/ban',{method:'POST',body:JSON.stringify({user_id:userId,reason})});notify(`User ${userId} banned`,'success');fetchUsers();}catch(e){}},[apiCall,fetchUsers]);
+  const unbanUser=useCallback(async(userId)=>{try{await apiCall('/admin/unban',{method:'POST',body:JSON.stringify({user_id:userId})});notify(`User ${userId} unbanned`,'success');fetchUsers();}catch(e){}},[apiCall,fetchUsers]);
+  const controlMarket=useCallback(async(marketId,action)=>{try{await apiCall(`/admin/market/${action}`,{method:'POST',body:JSON.stringify({market_id:marketId})});notify(`Market ${marketId}: ${action}`,'success');fetchStats();}catch(e){}},[apiCall,fetchStats]);
+  const createMarket=useCallback(async(marketData)=>{try{const d=await apiCall('/admin/markets/create',{method:'POST',body:JSON.stringify(marketData)});if(d.success){notify(`Market ${marketData.market_id} created`,'success');setTimeout(()=>fetchStats(),500);return{success:true};}return{success:false,error:d.error};}catch(e){return{success:false,error:e.message};}},[apiCall,fetchStats]);
   
-  const fetchLeaderboard=useCallback(async(marketId=null)=>{
-    try{
-      const url=marketId?`/admin/analytics/leaderboard?market_id=${marketId}`:'/admin/analytics/leaderboard';
-      const d=await apiCall(url);
-      update({leaderboard:d.leaderboard||[]});
-    }catch(e){console.error('Failed to fetch leaderboard',e);}
-  },[apiCall]);
+  useEffect(()=>{if(state.isLoggedIn&&state.isAdmin){fetchStats();fetchUsers();fetchAudit();fetchLeaderboard();fetchAnomalies();const i=setInterval(()=>{fetchStats();if(state.activeTab==='analytics'){fetchLeaderboard();fetchAnomalies();}},10000);return()=>clearInterval(i);}},[state.isLoggedIn,state.isAdmin]);
   
-  const fetchMarketAnalysis=useCallback(async(marketId)=>{
-    try{
-      const d=await apiCall(`/admin/analytics/market/${marketId}`);
-      // Use functional update to avoid stale closure issues
-      setState(prev=>({
-        ...prev,
-        marketAnalytics:{...prev.marketAnalytics,[marketId]:d}
-      }));
-    }catch(e){console.error('Failed to fetch market analysis',e);}
-  },[apiCall]);
-  
-  const fetchUserAnalysis=useCallback(async(userId,marketId=null)=>{
-    try{
-      const url=marketId?`/admin/analytics/user/${userId}?market_id=${marketId}`:`/admin/analytics/user/${userId}`;
-      const d=await apiCall(url);
-      // Use functional update to avoid stale closure issues
-      setState(prev=>({
-        ...prev,
-        userAnalytics:{...prev.userAnalytics,[userId]:d}
-      }));
-    }catch(e){console.error('Failed to fetch user analysis',e);}
-  },[apiCall]);
-  
-  const fetchAnomalies=useCallback(async()=>{
-    try{
-      const d=await apiCall('/admin/analytics/anomalies');
-      update({anomalies:d.anomalies||[]});
-    }catch(e){console.error('Failed to fetch anomalies',e);}
-  },[apiCall]);
-  
-  const fetchAllUsersAnalysis=useCallback(async(marketId=null)=>{
-    if(!state.users.length)return;
-    const userIds=state.users.map(u=>u.user_id);
-    // Fetch all in parallel to avoid closure issues and improve performance
-    const results=await Promise.allSettled(
-      userIds.map(async userId=>{
-        try{
-          const url=marketId?`/admin/analytics/user/${userId}?market_id=${marketId}`:`/admin/analytics/user/${userId}`;
-          const d=await apiCall(url);
-          return{userId,data:d};
-        }catch(e){
-          console.error(`Failed to fetch analysis for ${userId}`,e);
-          return{userId,data:null};
-        }
-      })
-    );
-    // Update state once with all results
-    const newUserAnalytics={...state.userAnalytics};
-    results.forEach((result,idx)=>{
-      if(result.status==='fulfilled'&&result.value.data){
-        newUserAnalytics[result.value.userId]=result.value.data;
-      }
-    });
-    update({userAnalytics:newUserAnalytics});
-  },[state.users,apiCall,state.userAnalytics]);
-  
-  const createUser=useCallback(async(userId,password,displayName,isAdmin=false)=>{
-    try{
-      await apiCall('/admin/users/create',{method:'POST',body:JSON.stringify({user_id:userId,password,display_name:displayName,is_admin:isAdmin})});
-      notify(`User ${userId} created`,'success');
-      fetchUsers();
-    }catch(e){}
-  },[apiCall,fetchUsers,notify]);
-  
-  const banUser=useCallback(async(userId,reason='')=>{
-    try{
-      await apiCall('/admin/ban',{method:'POST',body:JSON.stringify({user_id:userId,reason})});
-      notify(`User ${userId} banned`,'success');
-      fetchUsers();
-    }catch(e){}
-  },[apiCall,fetchUsers,notify]);
-  
-  const unbanUser=useCallback(async(userId)=>{
-    try{
-      await apiCall('/admin/unban',{method:'POST',body:JSON.stringify({user_id:userId})});
-      notify(`User ${userId} unbanned`,'success');
-      fetchUsers();
-    }catch(e){}
-  },[apiCall,fetchUsers,notify]);
-  
-  const controlMarket=useCallback(async(marketId,action)=>{
-    try{
-      await apiCall(`/admin/market/${action}`,{method:'POST',body:JSON.stringify({market_id:marketId})});
-      notify(`Market ${marketId}: ${action}`,'success');
-      fetchStats();
-    }catch(e){}
-  },[apiCall,fetchStats,notify]);
-  
-  useEffect(()=>{
-    if(state.isLoggedIn&&state.isAdmin){
-      fetchStats();
-      fetchUsers();
-      fetchAudit();
-      fetchLeaderboard();
-      fetchAnomalies();
-      const i=setInterval(()=>{
-        fetchStats();
-        if(state.activeTab==='analytics'){
-          fetchLeaderboard();
-          fetchAnomalies();
-        }
-      },10000);
-      return()=>clearInterval(i);
-    }
-  },[state.isLoggedIn,state.isAdmin,state.activeTab,fetchStats,fetchUsers,fetchAudit,fetchLeaderboard,fetchAnomalies]);
-  
-  useEffect(()=>{
-    if(state.isLoggedIn&&state.isAdmin&&state.activeTab==='analytics'&&state.users.length>0){
-      fetchAllUsersAnalysis();
-    }
-  },[state.isLoggedIn,state.isAdmin,state.activeTab,state.users.length]);
-  
-  return{state,update,login,logout,fetchStats,fetchUsers,fetchAudit,createUser,banUser,unbanUser,controlMarket,notify,fetchLeaderboard,fetchMarketAnalysis,fetchUserAnalysis,fetchAnomalies,fetchAllUsersAnalysis};
+  return{state,update,login,logout,fetchStats,fetchUsers,fetchAudit,createUser,banUser,unbanUser,controlMarket,notify,fetchLeaderboard,fetchAnomalies,createMarket,fetchUserActivity};
 }
 
-// Icons
 const Icons={
   Users:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>,
   Chart:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>,
@@ -307,33 +173,23 @@ const Icons={
   Pause:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>,
   Stop:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>,
   Home:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>,
+  Activity:()=><svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>,
+  Plus:()=><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>,
 };
 
 function LoginPage(){
   const{login,state}=useContext(AppContext);
-  const[uid,setUid]=useState('');
-  const[pwd,setPwd]=useState('');
-  const[error,setError]=useState('');
+  const[uid,setUid]=useState('');const[pwd,setPwd]=useState('');const[error,setError]=useState('');
   const handleSubmit=async(e)=>{e.preventDefault();if(!uid||!pwd)return;setError('');const r=await login(uid,pwd);if(!r.success)setError(r.error);};
   return(
     <div className="min-h-screen flex items-center justify-center bg-bb-bg p-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-10">
-          <div className="text-4xl font-bold text-bb-orange tracking-[0.3em] mb-2">FORTISIAN</div>
-          <div className="text-bb-yellow text-sm tracking-[0.15em] uppercase">Admin Dashboard</div>
-          <div className="text-bb-mutedDark text-xs mt-2">v{CONFIG.VERSION}</div>
-        </div>
+        <div className="text-center mb-10"><div className="text-4xl font-bold text-bb-orange tracking-[0.3em] mb-2">FORTISIAN</div><div className="text-bb-yellow text-sm tracking-[0.15em] uppercase">Admin Dashboard</div><div className="text-bb-mutedDark text-xs mt-2">v{CONFIG.VERSION}</div></div>
         <div className="panel p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error&&<div className="p-4 border border-bb-red bg-bb-redBg text-bb-red text-sm slide-down">{error}</div>}
-            <div>
-              <label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Admin User ID</label>
-              <input type="text" value={uid} onChange={e=>setUid(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="admin" autoFocus/>
-            </div>
-            <div>
-              <label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Password</label>
-              <input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="••••••••"/>
-            </div>
+            <div><label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Admin User ID</label><input type="text" value={uid} onChange={e=>setUid(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="admin" autoFocus/></div>
+            <div><label className="block text-bb-muted text-xs mb-2 uppercase tracking-wider">Password</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} className="w-full px-4 py-3 input-field text-sm" placeholder="••••••••"/></div>
             <button type="submit" disabled={state.loading||!uid||!pwd} className="w-full py-4 btn btn-primary">{state.loading?'Authenticating...':'Login to Admin'}</button>
           </form>
         </div>
@@ -345,27 +201,14 @@ function LoginPage(){
 
 function StatCard({title,value,subtitle,icon,color='orange'}){
   const colors={orange:'text-bb-orange',green:'text-bb-green',red:'text-bb-red',cyan:'text-bb-cyan',yellow:'text-bb-yellow',purple:'text-bb-purple'};
-  return(
-    <div className="stat-card">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-bb-muted text-xs uppercase tracking-wider">{title}</span>
-        <span className={colors[color]}>{icon}</span>
-      </div>
-      <div className={`text-3xl font-bold ${colors[color]} tabular-nums`}>{value??'--'}</div>
-      {subtitle&&<div className="text-bb-mutedDark text-xs mt-1">{subtitle}</div>}
-    </div>
-  );
+  return(<div className="stat-card"><div className="flex items-center justify-between mb-2"><span className="text-bb-muted text-xs uppercase tracking-wider">{title}</span><span className={colors[color]}>{icon}</span></div><div className={`text-3xl font-bold ${colors[color]} tabular-nums`}>{value??'--'}</div>{subtitle&&<div className="text-bb-mutedDark text-xs mt-1">{subtitle}</div>}</div>);
 }
 
 function OverviewTab(){
-  const{state,fetchStats}=useContext(AppContext);
-  const s=state.stats||{};
+  const{state,fetchStats}=useContext(AppContext);const s=state.stats||{};
   return(
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-bb-orange">System Overview</h2>
-        <button onClick={fetchStats} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
-      </div>
+      <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-bb-orange">System Overview</h2><button onClick={fetchStats} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button></div>
       <div className="grid grid-cols-4 gap-4">
         <StatCard title="Connected Users" value={s.connected_users||0} icon={<Icons.Users/>} color="green"/>
         <StatCard title="Active Sessions" value={s.active_sessions||0} icon={<Icons.Shield/>} color="cyan"/>
@@ -373,401 +216,79 @@ function OverviewTab(){
         <StatCard title="Book Cache Hits" value={s.book_cache?.cache_hit_rate||'--'} icon={<Icons.Clock/>} color="yellow"/>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <div className="panel p-4">
-          <div className="panel-title mb-4">Markets</div>
-          <div className="space-y-3">
-            {(s.markets||[]).length===0?<div className="text-bb-muted text-sm text-center py-4">No markets</div>:
-            (s.markets||[]).map(m=>(
-              <div key={m.market_id} className="flex items-center justify-between p-3 bg-bb-bg rounded">
-                <div>
-                  <div className="font-medium text-bb-white">{m.market_id}</div>
-                  <div className="text-xs text-bb-muted">{m.name}</div>
-                </div>
-                <div className="text-right">
-                  <div className={`text-sm font-medium ${m.status==='active'?'text-bb-green':m.status==='halted'?'text-bb-red':'text-bb-muted'}`}>{m.status?.toUpperCase()}</div>
-                  <div className="text-xs text-bb-muted">{m.order_count||0} orders · {m.trade_count||0} trades</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="panel p-4">
-          <div className="panel-title mb-4">Book Cache Stats</div>
-          <div className="space-y-2">
-            {!s.book_cache?<div className="text-bb-muted text-sm text-center py-4">No stats available</div>:
-            Object.entries(s.book_cache||{}).slice(0,10).map(([k,v])=>(
-              <div key={k} className="flex justify-between py-2 border-b border-bb-border/30">
-                <span className="text-bb-muted text-sm">{k.replace(/_/g,' ')}</span>
-                <span className="text-bb-white font-medium tabular-nums">{typeof v==='number'?v.toLocaleString():v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <div className="panel p-4"><div className="panel-title mb-4">Markets</div><div className="space-y-3">{(s.markets||[]).length===0?<div className="text-bb-muted text-sm text-center py-4">No markets</div>:(s.markets||[]).map(m=>(<div key={m.market_id} className="flex items-center justify-between p-3 bg-bb-bg rounded"><div><div className="font-medium text-bb-white">{m.market_id}</div><div className="text-xs text-bb-muted">{m.name}</div></div><div className="text-right"><div className={`text-sm font-medium ${m.status==='active'?'text-bb-green':m.status==='halted'?'text-bb-red':'text-bb-muted'}`}>{m.status?.toUpperCase()}</div><div className="text-xs text-bb-muted">{m.order_count||0} orders · {m.trade_count||0} trades</div></div></div>))}</div></div>
+        <div className="panel p-4"><div className="panel-title mb-4">Book Cache Stats</div><div className="space-y-2">{!s.book_cache?<div className="text-bb-muted text-sm text-center py-4">No stats available</div>:Object.entries(s.book_cache||{}).slice(0,10).map(([k,v])=>(<div key={k} className="flex justify-between py-2 border-b border-bb-border/30"><span className="text-bb-muted text-sm">{k.replace(/_/g,' ')}</span><span className="text-bb-white font-medium tabular-nums">{typeof v==='number'?v.toLocaleString():v}</span></div>))}</div></div>
       </div>
     </div>
   );
 }
-
-function UsersTab(){
-  const{state,fetchUsers,createUser,banUser,unbanUser}=useContext(AppContext);
-  const[showCreate,setShowCreate]=useState(false);
+[showCreate,setShowCreate]=useState(false);
   const[newUser,setNewUser]=useState({userId:'',password:'',displayName:'',isAdmin:false});
-  
-  const handleCreate=()=>{
-    if(!newUser.userId||!newUser.password)return;
-    createUser(newUser.userId,newUser.password,newUser.displayName||newUser.userId,newUser.isAdmin);
-    setNewUser({userId:'',password:'',displayName:'',isAdmin:false});
-    setShowCreate(false);
-  };
-  
+  const handleCreate=()=>{if(!newUser.userId||!newUser.password)return;createUser(newUser.userId,newUser.password,newUser.displayName||newUser.userId,newUser.isAdmin);setNewUser({userId:'',password:'',displayName:'',isAdmin:false});setShowCreate(false);};
   return(
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-bb-orange">User Management</h2>
-        <div className="flex gap-2">
-          <button onClick={fetchUsers} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
-          <button onClick={()=>setShowCreate(true)} className="px-4 py-1.5 btn btn-primary text-xs">+ Create User</button>
-        </div>
-      </div>
-      
-      {showCreate&&(
-        <div className="panel p-4 slide-down">
-          <div className="panel-title mb-4">Create New User</div>
-          <div className="grid grid-cols-4 gap-4">
-            <input type="text" placeholder="User ID" value={newUser.userId} onChange={e=>setNewUser({...newUser,userId:e.target.value})} className="px-3 py-2 input-field text-sm"/>
-            <input type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser({...newUser,password:e.target.value})} className="px-3 py-2 input-field text-sm"/>
-            <input type="text" placeholder="Display Name" value={newUser.displayName} onChange={e=>setNewUser({...newUser,displayName:e.target.value})} className="px-3 py-2 input-field text-sm"/>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-sm text-bb-muted cursor-pointer">
-                <input type="checkbox" checked={newUser.isAdmin} onChange={e=>setNewUser({...newUser,isAdmin:e.target.checked})} className="rounded"/>
-                Admin
-              </label>
-              <button onClick={handleCreate} className="px-4 py-2 btn btn-success text-xs">Create</button>
-              <button onClick={()=>setShowCreate(false)} className="px-4 py-2 text-bb-muted hover:text-bb-red text-xs">Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      <div className="panel">
-        {state.users.length===0?<div className="p-8 text-center text-bb-muted">No users found</div>:
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider">
-              <th className="px-4 py-3">User ID</th>
-              <th className="px-4 py-3">Display Name</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Last Login</th>
-              <th className="px-4 py-3">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.users.map(u=>(
-              <tr key={u.user_id} className="border-b border-bb-border/30 table-row">
-                <td className="px-4 py-3 font-medium text-bb-orange">{u.user_id}</td>
-                <td className="px-4 py-3 text-bb-white">{u.display_name}</td>
-                <td className="px-4 py-3">{u.is_admin?<span className="text-xs px-2 py-0.5 bg-bb-yellowBg text-bb-yellow rounded">ADMIN</span>:<span className="text-bb-muted text-sm">User</span>}</td>
-                <td className="px-4 py-3">{u.is_active?<span className="text-bb-green text-sm">Active</span>:<span className="text-bb-red text-sm">Banned</span>}</td>
-                <td className="px-4 py-3 text-bb-muted text-sm tabular-nums">{formatDateTime(u.last_login)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    {u.is_active?
-                      <button onClick={()=>banUser(u.user_id)} className="text-xs px-2 py-1 text-bb-red hover:bg-bb-redBg rounded" title="Ban user"><Icons.Ban/></button>:
-                      <button onClick={()=>unbanUser(u.user_id)} className="text-xs px-2 py-1 text-bb-green hover:bg-bb-greenBg rounded" title="Unban user"><Icons.Check/></button>
-                    }
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>}
-      </div>
+      <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-bb-orange">User Management</h2><div className="flex gap-2"><button onClick={fetchUsers} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button><button onClick={()=>setShowCreate(true)} className="px-4 py-1.5 btn btn-primary text-xs">+ Create User</button></div></div>
+      {showCreate&&(<div className="panel p-4 slide-down"><div className="panel-title mb-4">Create New User</div><div className="grid grid-cols-4 gap-4"><input type="text" placeholder="User ID" value={newUser.userId} onChange={e=>setNewUser({...newUser,userId:e.target.value})} className="px-3 py-2 input-field text-sm"/><input type="password" placeholder="Password" value={newUser.password} onChange={e=>setNewUser({...newUser,password:e.target.value})} className="px-3 py-2 input-field text-sm"/><input type="text" placeholder="Display Name" value={newUser.displayName} onChange={e=>setNewUser({...newUser,displayName:e.target.value})} className="px-3 py-2 input-field text-sm"/><div className="flex items-center gap-4"><label className="flex items-center gap-2 text-sm text-bb-muted cursor-pointer"><input type="checkbox" checked={newUser.isAdmin} onChange={e=>setNewUser({...newUser,isAdmin:e.target.checked})} className="rounded"/>Admin</label><button onClick={handleCreate} className="px-4 py-2 btn btn-success text-xs">Create</button><button onClick={()=>setShowCreate(false)} className="px-4 py-2 text-bb-muted hover:text-bb-red text-xs">Cancel</button></div></div></div>)}
+      <div className="panel">{state.users.length===0?<div className="p-8 text-center text-bb-muted">No users found</div>:<table className="w-full"><thead><tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider"><th className="px-4 py-3">User ID</th><th className="px-4 py-3">Display Name</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Last Login</th><th className="px-4 py-3">Actions</th></tr></thead><tbody>{state.users.map(u=>(<tr key={u.user_id} className="border-b border-bb-border/30 table-row"><td className="px-4 py-3 font-medium text-bb-orange">{u.user_id}</td><td className="px-4 py-3 text-bb-white">{u.display_name}</td><td className="px-4 py-3">{u.is_admin?<span className="text-xs px-2 py-0.5 bg-bb-yellowBg text-bb-yellow rounded">ADMIN</span>:<span className="text-bb-muted text-sm">User</span>}</td><td className="px-4 py-3">{u.is_active?<span className="text-bb-green text-sm">Active</span>:<span className="text-bb-red text-sm">Banned</span>}</td><td className="px-4 py-3 text-bb-muted text-sm tabular-nums">{formatDateTime(u.last_login)}</td><td className="px-4 py-3"><div className="flex gap-2">{u.is_active?<button onClick={()=>banUser(u.user_id)} className="text-xs px-2 py-1 text-bb-red hover:bg-bb-redBg rounded" title="Ban user"><Icons.Ban/></button>:<button onClick={()=>unbanUser(u.user_id)} className="text-xs px-2 py-1 text-bb-green hover:bg-bb-greenBg rounded" title="Unban user"><Icons.Check/></button>}</div></td></tr>))}</tbody></table>}</div>
     </div>
   );
 }
 
 function MarketsTab(){
-  const{state,controlMarket,apiCall,update,fetchStats}=useContext(AppContext);
+  const{state,controlMarket,createMarket,fetchStats}=useContext(AppContext);
   const markets=(state.stats?.markets||[]);
-  const[showCreate,setShowCreate]=useState(false);
-  const[creating,setCreating]=useState(false);
-  const[formData,setFormData]=useState({market_id:'',title:'',description:'',tick_size:'0.01',lot_size:1,max_position:null});
-  
-  const createMarket=useCallback(async()=>{
-    if(!formData.market_id||!formData.title){return;}
-    setCreating(true);
-    try{
-      const d=await apiCall('/admin/markets/create',{method:'POST',body:JSON.stringify(formData)});
-      if(d.success){
-        update({notifications:[...state.notifications,{id:Date.now(),message:`Market ${formData.market_id} created`,type:'success',duration:3000}]});
-        setFormData({market_id:'',title:'',description:'',tick_size:'0.01',lot_size:1,max_position:null});
-        setShowCreate(false);
-        setTimeout(()=>fetchStats(),500);
-      }
-    }catch(e){
-      update({notifications:[...state.notifications,{id:Date.now(),message:`Failed to create market: ${e.message}`,type:'error',duration:5000}]});
-    }finally{
-      setCreating(false);
-    }
-  },[formData,apiCall,state.notifications,update,fetchStats]);
-  
+  const[showCreate,setShowCreate]=useState(false);const[creating,setCreating]=useState(false);
+  const[formData,setFormData]=useState({market_id:'',title:'',description:'',tick_size:'0.01',lot_size:1,max_position:1000});
+  const handleCreateMarket=async()=>{if(!formData.market_id||!formData.title)return;setCreating(true);const result=await createMarket(formData);if(result.success){setFormData({market_id:'',title:'',description:'',tick_size:'0.01',lot_size:1,max_position:1000});setShowCreate(false);}setCreating(false);};
   return(
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-bb-orange">Market Control</h2>
-        <button onClick={()=>setShowCreate(!showCreate)} className="px-4 py-2 btn btn-primary text-xs flex items-center gap-2">+ Create Market</button>
-      </div>
-      {showCreate&&<div className="panel p-4">
-        <h3 className="text-sm font-bold text-bb-white mb-4">Create New Market</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div><label className="text-xs text-bb-muted block mb-1">Market ID *</label><input type="text" value={formData.market_id} onChange={e=>setFormData({...formData,market_id:e.target.value.toUpperCase()})} className="w-full px-3 py-2 input-field text-sm" placeholder="AAPL"/></div>
-          <div><label className="text-xs text-bb-muted block mb-1">Title *</label><input type="text" value={formData.title} onChange={e=>setFormData({...formData,title:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="Apple Inc."/></div>
-          <div className="col-span-2"><label className="text-xs text-bb-muted block mb-1">Description</label><input type="text" value={formData.description} onChange={e=>setFormData({...formData,description:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="Tech giant stock"/></div>
-          <div><label className="text-xs text-bb-muted block mb-1">Tick Size</label><input type="text" value={formData.tick_size} onChange={e=>setFormData({...formData,tick_size:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="0.01"/></div>
-          <div><label className="text-xs text-bb-muted block mb-1">Lot Size</label><input type="number" value={formData.lot_size} onChange={e=>setFormData({...formData,lot_size:parseInt(e.target.value)||1})} className="w-full px-3 py-2 input-field text-sm" placeholder="1"/></div>
-          <div><label className="text-xs text-bb-muted block mb-1">Max Position</label><input type="number" value={formData.max_position||''} onChange={e=>setFormData({...formData,max_position:e.target.value?parseInt(e.target.value):null})} className="w-full px-3 py-2 input-field text-sm" placeholder="1000"/></div>
-        </div>
-        <div className="flex gap-2 mt-4">
-          <button onClick={createMarket} disabled={creating||!formData.market_id||!formData.title} className="px-4 py-2 btn btn-primary text-xs">Create</button>
-          <button onClick={()=>setShowCreate(false)} className="px-4 py-2 btn text-xs border border-bb-border">Cancel</button>
-        </div>
-      </div>}
-      {markets.length===0?<div className="panel p-8 text-center text-bb-muted">No markets available</div>:
-      <div className="grid grid-cols-3 gap-4">
-        {markets.map(m=>(
-          <div key={m.market_id} className="panel p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="text-lg font-bold text-bb-white">{m.market_id}</div>
-                <div className="text-sm text-bb-muted">{m.name}</div>
-              </div>
-              <div className={`text-xs px-3 py-1 rounded font-medium ${m.status==='active'?'bg-bb-greenBg text-bb-green':m.status==='halted'?'bg-bb-yellowBg text-bb-yellow':'bg-bb-redBg text-bb-red'}`}>{m.status?.toUpperCase()}</div>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm mb-4">
-              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Orders</div><div className="text-bb-white font-medium">{m.order_count||0}</div></div>
-              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Trades</div><div className="text-bb-white font-medium">{m.trade_count||0}</div></div>
-              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Tick Size</div><div className="text-bb-orange font-medium">{m.tick_size}</div></div>
-              <div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Max Position</div><div className="text-bb-cyan font-medium">{m.max_position}</div></div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={()=>controlMarket(m.market_id,'start')} disabled={m.status==='active'} className="flex-1 py-2 btn btn-success text-xs flex items-center justify-center gap-1"><Icons.Play/>Start</button>
-              <button onClick={()=>controlMarket(m.market_id,'halt')} disabled={m.status==='halted'} className="flex-1 py-2 btn text-xs flex items-center justify-center gap-1 bg-bb-yellow text-bb-bgDark"><Icons.Pause/>Halt</button>
-              <button onClick={()=>controlMarket(m.market_id,'stop')} disabled={m.status==='closed'} className="flex-1 py-2 btn btn-danger text-xs flex items-center justify-center gap-1"><Icons.Stop/>Stop</button>
-            </div>
-          </div>
-        ))}
-      </div>}
+      <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-bb-orange">Market Control</h2><div className="flex gap-2"><button onClick={fetchStats} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button><button onClick={()=>setShowCreate(!showCreate)} className="px-4 py-2 btn btn-primary text-xs flex items-center gap-2"><Icons.Plus/> Create Market</button></div></div>
+      {showCreate&&(<div className="panel p-4 slide-down"><h3 className="text-sm font-bold text-bb-white mb-4">Create New Market</h3><div className="grid grid-cols-2 gap-4"><div><label className="text-xs text-bb-muted block mb-1">Market ID *</label><input type="text" value={formData.market_id} onChange={e=>setFormData({...formData,market_id:e.target.value.toUpperCase()})} className="w-full px-3 py-2 input-field text-sm" placeholder="AAPL"/></div><div><label className="text-xs text-bb-muted block mb-1">Title *</label><input type="text" value={formData.title} onChange={e=>setFormData({...formData,title:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="Apple Inc."/></div><div className="col-span-2"><label className="text-xs text-bb-muted block mb-1">Description</label><input type="text" value={formData.description} onChange={e=>setFormData({...formData,description:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="Tech giant stock"/></div><div><label className="text-xs text-bb-muted block mb-1">Tick Size</label><input type="text" value={formData.tick_size} onChange={e=>setFormData({...formData,tick_size:e.target.value})} className="w-full px-3 py-2 input-field text-sm" placeholder="0.01"/></div><div><label className="text-xs text-bb-muted block mb-1">Lot Size</label><input type="number" value={formData.lot_size} onChange={e=>setFormData({...formData,lot_size:parseInt(e.target.value)||1})} className="w-full px-3 py-2 input-field text-sm" placeholder="1"/></div><div><label className="text-xs text-bb-muted block mb-1">Max Position</label><input type="number" value={formData.max_position||''} onChange={e=>setFormData({...formData,max_position:e.target.value?parseInt(e.target.value):null})} className="w-full px-3 py-2 input-field text-sm" placeholder="1000"/></div></div><div className="flex gap-2 mt-4"><button onClick={handleCreateMarket} disabled={creating||!formData.market_id||!formData.title} className="px-4 py-2 btn btn-primary text-xs">{creating?'Creating...':'Create Market'}</button><button onClick={()=>setShowCreate(false)} className="px-4 py-2 btn text-xs border border-bb-border text-bb-muted hover:text-bb-white">Cancel</button></div></div>)}
+      {markets.length===0?<div className="panel p-8 text-center text-bb-muted">No markets available</div>:<div className="grid grid-cols-3 gap-4">{markets.map(m=>(<div key={m.market_id} className="panel p-4"><div className="flex items-center justify-between mb-4"><div><div className="text-lg font-bold text-bb-white">{m.market_id}</div><div className="text-sm text-bb-muted">{m.name}</div></div><div className={`text-xs px-3 py-1 rounded font-medium ${m.status==='active'?'bg-bb-greenBg text-bb-green':m.status==='halted'?'bg-bb-yellowBg text-bb-yellow':'bg-bb-redBg text-bb-red'}`}>{m.status?.toUpperCase()}</div></div><div className="grid grid-cols-2 gap-2 text-sm mb-4"><div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Orders</div><div className="text-bb-white font-medium">{m.order_count||0}</div></div><div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Trades</div><div className="text-bb-white font-medium">{m.trade_count||0}</div></div><div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Tick Size</div><div className="text-bb-orange font-medium">{m.tick_size}</div></div><div className="p-2 bg-bb-bg rounded"><div className="text-bb-muted text-xs">Max Position</div><div className="text-bb-cyan font-medium">{m.max_position}</div></div></div><div className="flex gap-2"><button onClick={()=>controlMarket(m.market_id,'start')} disabled={m.status==='active'} className="flex-1 py-2 btn btn-success text-xs flex items-center justify-center gap-1"><Icons.Play/>Start</button><button onClick={()=>controlMarket(m.market_id,'halt')} disabled={m.status==='halted'} className="flex-1 py-2 btn text-xs flex items-center justify-center gap-1 bg-bb-yellow text-bb-bgDark"><Icons.Pause/>Halt</button><button onClick={()=>controlMarket(m.market_id,'stop')} disabled={m.status==='closed'} className="flex-1 py-2 btn btn-danger text-xs flex items-center justify-center gap-1"><Icons.Stop/>Stop</button></div></div>))}</div>}
+    </div>
+  );
+}
+
+function UserActivityTab(){
+  const{state,fetchUserActivity}=useContext(AppContext);
+  const{users,selectedUser,selectedUserOrders,selectedUserTrades,selectedUserLoading}=state;
+  const[marketFilter,setMarketFilter]=useState('');
+  const markets=(state.stats?.markets||[]).map(m=>m.market_id);
+  const handleUserChange=(userId)=>{fetchUserActivity(userId,marketFilter||null);};
+  const handleMarketChange=(marketId)=>{setMarketFilter(marketId);if(selectedUser)fetchUserActivity(selectedUser,marketId||null);};
+  return(
+    <div className="space-y-6">
+      <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-bb-orange">User Activity Explorer</h2></div>
+      <div className="panel p-4"><div className="grid grid-cols-3 gap-4"><div><label className="text-xs text-bb-muted block mb-2 uppercase tracking-wider">Select User</label><select value={selectedUser||''} onChange={e=>handleUserChange(e.target.value)} className="w-full px-3 py-2 input-field text-sm"><option value="">-- Select a User --</option>{users.map(u=>(<option key={u.user_id} value={u.user_id}>{u.display_name||u.user_id} ({u.user_id})</option>))}</select></div><div><label className="text-xs text-bb-muted block mb-2 uppercase tracking-wider">Filter by Market</label><select value={marketFilter} onChange={e=>handleMarketChange(e.target.value)} className="w-full px-3 py-2 input-field text-sm"><option value="">All Markets</option>{markets.map(m=>(<option key={m} value={m}>{m}</option>))}</select></div><div className="flex items-end"><button onClick={()=>fetchUserActivity(selectedUser,marketFilter||null)} disabled={!selectedUser||selectedUserLoading} className="px-4 py-2 btn btn-primary text-xs flex items-center gap-2"><Icons.Refresh/>{selectedUserLoading?'Loading...':'Refresh'}</button></div></div></div>
+      {selectedUser&&(<>
+        <div className="panel"><div className="panel-header"><span className="panel-title">Orders ({selectedUserOrders.length})</span></div><div className="max-h-[400px] overflow-y-auto">{selectedUserLoading?<div className="p-8 text-center text-bb-muted">Loading orders...</div>:selectedUserOrders.length===0?<div className="p-8 text-center text-bb-muted">No orders found</div>:<table className="w-full"><thead className="sticky top-0 bg-bb-panel"><tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider"><th className="px-4 py-3">Order ID</th><th className="px-4 py-3">Market</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Price</th><th className="px-4 py-3">Qty</th><th className="px-4 py-3">Filled</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Time</th></tr></thead><tbody>{selectedUserOrders.map(o=>(<tr key={o._id||o.order_id} className="border-b border-bb-border/30 table-row text-sm"><td className="px-4 py-2 text-bb-muted font-mono text-xs">{(o._id||o.order_id||'').slice(0,8)}...</td><td className="px-4 py-2 text-bb-orange">{o.market_id}</td><td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs font-bold ${o.side==='buy'?'bg-bb-greenBg text-bb-green':'bg-bb-redBg text-bb-red'}`}>{o.side?.toUpperCase()}</span></td><td className="px-4 py-2 text-bb-white tabular-nums">{formatPrice(o.price)}</td><td className="px-4 py-2 tabular-nums">{o.qty||o.original_qty}</td><td className="px-4 py-2 tabular-nums text-bb-cyan">{o.filled_qty||0}</td><td className="px-4 py-2"><span className={`text-xs ${o.status==='open'?'text-bb-green':o.status==='filled'?'text-bb-cyan':o.status==='cancelled'?'text-bb-yellow':'text-bb-muted'}`}>{o.status?.toUpperCase()}</span></td><td className="px-4 py-2 text-bb-muted text-xs tabular-nums">{formatDateTime(o.created_at)}</td></tr>))}</tbody></table>}</div></div>
+        <div className="panel"><div className="panel-header"><span className="panel-title">Trades ({selectedUserTrades.length})</span></div><div className="max-h-[400px] overflow-y-auto">{selectedUserLoading?<div className="p-8 text-center text-bb-muted">Loading trades...</div>:selectedUserTrades.length===0?<div className="p-8 text-center text-bb-muted">No trades found</div>:<table className="w-full"><thead className="sticky top-0 bg-bb-panel"><tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider"><th className="px-4 py-3">Trade ID</th><th className="px-4 py-3">Market</th><th className="px-4 py-3">Side</th><th className="px-4 py-3">Price</th><th className="px-4 py-3">Qty</th><th className="px-4 py-3">Counterparty</th><th className="px-4 py-3">Time</th></tr></thead><tbody>{selectedUserTrades.map(t=>{const isBuyer=t.buyer_id===selectedUser;const counterparty=isBuyer?t.seller_id:t.buyer_id;return(<tr key={t._id||t.trade_id} className="border-b border-bb-border/30 table-row text-sm"><td className="px-4 py-2 text-bb-muted font-mono text-xs">{(t._id||t.trade_id||'').slice(0,8)}...</td><td className="px-4 py-2 text-bb-orange">{t.market_id}</td><td className="px-4 py-2"><span className={`px-2 py-0.5 rounded text-xs font-bold ${isBuyer?'bg-bb-greenBg text-bb-green':'bg-bb-redBg text-bb-red'}`}>{isBuyer?'BUY':'SELL'}</span></td><td className="px-4 py-2 text-bb-white tabular-nums">{formatPrice(t.price)}</td><td className="px-4 py-2 tabular-nums">{t.qty}</td><td className="px-4 py-2 text-bb-muted">{counterparty}</td><td className="px-4 py-2 text-bb-muted text-xs tabular-nums">{formatDateTime(t.ts||t.timestamp)}</td></tr>);})}</tbody></table>}</div></div>
+      </>)}
+      {!selectedUser&&(<div className="panel p-12 text-center"><div className="text-bb-orange mb-4"><Icons.Users/></div><div className="text-bb-muted">Select a user to view their orders and trades</div></div>)}
     </div>
   );
 }
 
 function AnalyticsTab(){
-  const{state,fetchLeaderboard,fetchMarketAnalysis,fetchUserAnalysis,fetchAnomalies,fetchAllUsersAnalysis,update}=useContext(AppContext);
-  const chartRefs={pnl:useRef(null),volume:useRef(null),trades:useRef(null),marketComparison:useRef(null)};
+  const{state,fetchLeaderboard,fetchAnomalies,update}=useContext(AppContext);
+  const chartRefs={pnl:useRef(null),volume:useRef(null),trades:useRef(null)};
   const chartInstances=useRef({pnl:null,volume:null,trades:null});
-  
   const formatNumber=(n)=>typeof n==='string'?parseFloat(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const formatInt=(n)=>typeof n==='string'?parseInt(n,10).toLocaleString():n?.toLocaleString()||'0';
   
-  useEffect(()=>{
-    if(state.leaderboard.length>0&&chartRefs.pnl.current){
-      if(chartInstances.current.pnl)chartInstances.current.pnl.destroy();
-      const ctx=chartRefs.pnl.current.getContext('2d');
-      const topUsers=state.leaderboard.slice(0,15);
-      chartInstances.current.pnl=new Chart(ctx,{
-        type:'bar',
-        data:{
-          labels:topUsers.map(u=>u.display_name||u.user_id),
-          datasets:[{
-            label:'Realized P&L',
-            data:topUsers.map(u=>parseFloat(u.realized_pnl||0)),
-            backgroundColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'rgba(0,194,106,0.6)':'rgba(247,71,71,0.6)'),
-            borderColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'#00d26a':'#ff4757'),
-            borderWidth:1
-          }]
-        },
-        options:{
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{legend:{display:false},title:{display:true,text:'User P&L Performance',color:'#ffa028',font:{size:14,weight:'bold'}}},
-          scales:{y:{ticks:{color:'#888',callback:function(v){return'$'+v.toFixed(2);}},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}
-        }
-      });
-    }
-    return()=>{if(chartInstances.current.pnl)chartInstances.current.pnl.destroy();};
-  },[state.leaderboard]);
+  useEffect(()=>{if(state.leaderboard.length>0&&chartRefs.pnl.current){if(chartInstances.current.pnl)chartInstances.current.pnl.destroy();const ctx=chartRefs.pnl.current.getContext('2d');const topUsers=state.leaderboard.slice(0,15);chartInstances.current.pnl=new Chart(ctx,{type:'bar',data:{labels:topUsers.map(u=>u.display_name||u.user_id),datasets:[{label:'Realized P&L',data:topUsers.map(u=>parseFloat(u.realized_pnl||0)),backgroundColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'rgba(0,194,106,0.6)':'rgba(247,71,71,0.6)'),borderColor:topUsers.map(u=>parseFloat(u.realized_pnl||0)>=0?'#00d26a':'#ff4757'),borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'User P&L Performance',color:'#ffa028',font:{size:14,weight:'bold'}}},scales:{y:{ticks:{color:'#888',callback:function(v){return'$'+v.toFixed(2);}},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}}});}return()=>{if(chartInstances.current.pnl)chartInstances.current.pnl.destroy();};},[state.leaderboard]);
+  useEffect(()=>{if(state.leaderboard.length>0&&chartRefs.volume.current){if(chartInstances.current.volume)chartInstances.current.volume.destroy();const ctx=chartRefs.volume.current.getContext('2d');const topUsers=state.leaderboard.slice(0,15);chartInstances.current.volume=new Chart(ctx,{type:'bar',data:{labels:topUsers.map(u=>u.display_name||u.user_id),datasets:[{label:'Total Volume',data:topUsers.map(u=>parseInt(u.total_volume||0,10)),backgroundColor:'rgba(255,160,40,0.6)',borderColor:'#ffa028',borderWidth:1}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Trading Volume by User',color:'#ffa028',font:{size:14,weight:'bold'}}},scales:{y:{ticks:{color:'#888',callback:function(v){return v.toLocaleString();}},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}}});}return()=>{if(chartInstances.current.volume)chartInstances.current.volume.destroy();};},[state.leaderboard]);
+  useEffect(()=>{if(state.leaderboard.length>0&&chartRefs.trades.current){if(chartInstances.current.trades)chartInstances.current.trades.destroy();const ctx=chartRefs.trades.current.getContext('2d');const topUsers=state.leaderboard.slice(0,15);chartInstances.current.trades=new Chart(ctx,{type:'line',data:{labels:topUsers.map(u=>u.display_name||u.user_id),datasets:[{label:'Trade Count',data:topUsers.map(u=>parseInt(u.trade_count||0,10)),borderColor:'#00bcd4',backgroundColor:'rgba(0,188,212,0.1)',fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Number of Trades by User',color:'#ffa028',font:{size:14,weight:'bold'}}},scales:{y:{ticks:{color:'#888'},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}}});}return()=>{if(chartInstances.current.trades)chartInstances.current.trades.destroy();};},[state.leaderboard]);
   
-  useEffect(()=>{
-    if(state.leaderboard.length>0&&chartRefs.volume.current){
-      if(chartInstances.current.volume)chartInstances.current.volume.destroy();
-      const ctx=chartRefs.volume.current.getContext('2d');
-      const topUsers=state.leaderboard.slice(0,15);
-      chartInstances.current.volume=new Chart(ctx,{
-        type:'bar',
-        data:{
-          labels:topUsers.map(u=>u.display_name||u.user_id),
-          datasets:[{
-            label:'Total Volume',
-            data:topUsers.map(u=>parseInt(u.total_volume||0,10)),
-            backgroundColor:'rgba(255,160,40,0.6)',
-            borderColor:'#ffa028',
-            borderWidth:1
-          }]
-        },
-        options:{
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{legend:{display:false},title:{display:true,text:'Trading Volume by User',color:'#ffa028',font:{size:14,weight:'bold'}}},
-          scales:{y:{ticks:{color:'#888',callback:function(v){return v.toLocaleString();}},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}
-        }
-      });
-    }
-    return()=>{if(chartInstances.current.volume)chartInstances.current.volume.destroy();};
-  },[state.leaderboard]);
-  
-  useEffect(()=>{
-    if(state.leaderboard.length>0&&chartRefs.trades.current){
-      if(chartInstances.current.trades)chartInstances.current.trades.destroy();
-      const ctx=chartRefs.trades.current.getContext('2d');
-      const topUsers=state.leaderboard.slice(0,15);
-      chartInstances.current.trades=new Chart(ctx,{
-        type:'line',
-        data:{
-          labels:topUsers.map(u=>u.display_name||u.user_id),
-          datasets:[{
-            label:'Trade Count',
-            data:topUsers.map(u=>parseInt(u.trade_count||0,10)),
-            borderColor:'#00bcd4',
-            backgroundColor:'rgba(0,188,212,0.1)',
-            fill:true,
-            tension:0.4
-          }]
-        },
-        options:{
-          responsive:true,
-          maintainAspectRatio:false,
-          plugins:{legend:{display:false},title:{display:true,text:'Number of Trades by User',color:'#ffa028',font:{size:14,weight:'bold'}}},
-          scales:{y:{ticks:{color:'#888'},grid:{color:'#3c3c3c'}},x:{ticks:{color:'#888',maxRotation:45,minRotation:45},grid:{display:false}}}
-        }
-      });
-    }
-    return()=>{if(chartInstances.current.trades)chartInstances.current.trades.destroy();};
-  },[state.leaderboard]);
-  
-  const markets=(state.stats?.markets||[]).map(m=>m.market_id);
-  const selectedMarket=state.selectedMarket||markets[0]||null;
-  
+  const markets=(state.stats?.markets||[]).map(m=>m.market_id);const selectedMarket=state.selectedMarket||null;
   return(
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-bb-orange">Analytics & Performance</h2>
-        <div className="flex gap-2">
-          <select value={selectedMarket||''} onChange={e=>{update({selectedMarket:e.target.value||null});fetchLeaderboard(e.target.value||null);}} className="px-3 py-1.5 input-field text-xs">
-            <option value="">All Markets</option>
-            {markets.map(m=><option key={m} value={m}>{m}</option>)}
-          </select>
-          <button onClick={()=>{fetchLeaderboard(selectedMarket);fetchAnomalies();}} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard title="Total Traders" value={state.leaderboard.length} icon={<Icons.Users/>} color="cyan"/>
-        <StatCard title="Total Trades" value={state.leaderboard.reduce((sum,u)=>sum+parseInt(u.trade_count||0,10),0)} icon={<Icons.Chart/>} color="orange"/>
-        <StatCard title="Total Volume" value={state.leaderboard.reduce((sum,u)=>sum+parseInt(u.total_volume||0,10),0).toLocaleString()} icon={<Icons.Chart/>} color="green"/>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-4">
-        <div className="panel p-4">
-          <div className="panel-title mb-4">P&L Performance</div>
-          <div style={{height:'300px'}}>
-            <canvas ref={chartRefs.pnl}></canvas>
-          </div>
-        </div>
-        <div className="panel p-4">
-          <div className="panel-title mb-4">Trading Volume</div>
-          <div style={{height:'300px'}}>
-            <canvas ref={chartRefs.volume}></canvas>
-          </div>
-        </div>
-      </div>
-      
-      <div className="panel p-4">
-        <div className="panel-title mb-4">Trade Count</div>
-        <div style={{height:'300px'}}>
-          <canvas ref={chartRefs.trades}></canvas>
-        </div>
-      </div>
-      
-      <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">Leaderboard - All Users Performance</div>
-        </div>
-        <div className="max-h-[600px] overflow-y-auto">
-          {state.leaderboard.length===0?<div className="p-8 text-center text-bb-muted">No trading data available</div>:
-          <table className="w-full">
-            <thead className="sticky top-0 bg-bb-panel">
-              <tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider">
-                <th className="px-4 py-3">Rank</th>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Realized P&L</th>
-                <th className="px-4 py-3">Total P&L</th>
-                <th className="px-4 py-3">Net Position</th>
-                <th className="px-4 py-3">Volume</th>
-                <th className="px-4 py-3">Trades</th>
-                <th className="px-4 py-3">Win Rate</th>
-                <th className="px-4 py-3">Avg Profit/Trade</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.leaderboard.map((u,i)=>(
-                <tr key={u.user_id} className="border-b border-bb-border/30 table-row text-sm">
-                  <td className="px-4 py-3 font-bold text-bb-orange">#{u.rank||i+1}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-bb-white">{u.display_name||u.user_id}</div>
-                    <div className="text-xs text-bb-muted">{u.user_id}</div>
-                  </td>
-                  <td className={`px-4 py-3 font-medium tabular-nums ${parseFloat(u.realized_pnl||0)>=0?'text-bb-green':'text-bb-red'}`}>
-                    ${formatNumber(u.realized_pnl)}
-                  </td>
-                  <td className={`px-4 py-3 font-medium tabular-nums ${parseFloat(u.total_pnl||0)>=0?'text-bb-green':'text-bb-red'}`}>
-                    ${formatNumber(u.total_pnl)}
-                  </td>
-                  <td className={`px-4 py-3 tabular-nums ${parseInt(u.net_position||0,10)>=0?'text-bb-green':'text-bb-red'}`}>
-                    {formatInt(u.net_position)}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums text-bb-white">{formatInt(u.total_volume)}</td>
-                  <td className="px-4 py-3 tabular-nums text-bb-white">{formatInt(u.trade_count)}</td>
-                  <td className="px-4 py-3 tabular-nums text-bb-cyan">{(parseFloat(u.win_rate||0)*100).toFixed(1)}%</td>
-                  <td className={`px-4 py-3 tabular-nums text-xs ${parseFloat(u.avg_profit_per_trade||0)>=0?'text-bb-green':'text-bb-red'}`}>
-                    ${formatNumber(u.avg_profit_per_trade)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>}
-        </div>
-      </div>
-      
-      {state.anomalies.length>0&&(
-        <div className="panel">
-          <div className="panel-header">
-            <div className="panel-title">Detected Anomalies ({state.anomalies.length})</div>
-          </div>
-          <div className="p-4 space-y-2 max-h-[300px] overflow-y-auto">
-            {state.anomalies.map((a,i)=>(
-              <div key={i} className="p-3 bg-bb-redBg border border-bb-red/30 rounded text-sm">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-bb-red uppercase text-xs">{a.type?.replace(/_/g,' ')}</span>
-                  <span className="text-xs text-bb-muted">{a.severity}</span>
-                </div>
-                <div className="text-bb-white">{a.details}</div>
-                <div className="text-xs text-bb-muted mt-1">User: {a.user_id} | Market: {a.market_id} | {formatDateTime(a.timestamp)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-bb-orange">Analytics & Performance</h2><div className="flex gap-2"><select value={selectedMarket||''} onChange={e=>{update({selectedMarket:e.target.value||null});fetchLeaderboard(e.target.value||null);}} className="px-3 py-1.5 input-field text-xs"><option value="">All Markets</option>{markets.map(m=><option key={m} value={m}>{m}</option>)}</select><button onClick={()=>{fetchLeaderboard(selectedMarket);fetchAnomalies();}} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button></div></div>
+      <div className="grid grid-cols-3 gap-4"><StatCard title="Total Traders" value={state.leaderboard.length} icon={<Icons.Users/>} color="cyan"/><StatCard title="Total Trades" value={state.leaderboard.reduce((sum,u)=>sum+parseInt(u.trade_count||0,10),0)} icon={<Icons.Chart/>} color="orange"/><StatCard title="Total Volume" value={state.leaderboard.reduce((sum,u)=>sum+parseInt(u.total_volume||0,10),0).toLocaleString()} icon={<Icons.Chart/>} color="green"/></div>
+      <div className="grid grid-cols-2 gap-4"><div className="panel p-4"><div className="panel-title mb-4">P&L Performance</div><div style={{height:'300px'}}><canvas ref={chartRefs.pnl}></canvas></div></div><div className="panel p-4"><div className="panel-title mb-4">Trading Volume</div><div style={{height:'300px'}}><canvas ref={chartRefs.volume}></canvas></div></div></div>
+      <div className="panel p-4"><div className="panel-title mb-4">Trade Count</div><div style={{height:'300px'}}><canvas ref={chartRefs.trades}></canvas></div></div>
+      <div className="panel"><div className="panel-header"><div className="panel-title">Leaderboard - All Users Performance</div></div><div className="max-h-[600px] overflow-y-auto">{state.leaderboard.length===0?<div className="p-8 text-center text-bb-muted">No trading data available</div>:<table className="w-full"><thead className="sticky top-0 bg-bb-panel"><tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider"><th className="px-4 py-3">Rank</th><th className="px-4 py-3">User</th><th className="px-4 py-3">Realized P&L</th><th className="px-4 py-3">Total P&L</th><th className="px-4 py-3">Net Position</th><th className="px-4 py-3">Volume</th><th className="px-4 py-3">Trades</th><th className="px-4 py-3">Win Rate</th><th className="px-4 py-3">Avg Profit/Trade</th></tr></thead><tbody>{state.leaderboard.map((u,i)=>(<tr key={u.user_id} className="border-b border-bb-border/30 table-row text-sm"><td className="px-4 py-3 font-bold text-bb-orange">#{u.rank||i+1}</td><td className="px-4 py-3"><div className="font-medium text-bb-white">{u.display_name||u.user_id}</div><div className="text-xs text-bb-muted">{u.user_id}</div></td><td className={`px-4 py-3 font-medium tabular-nums ${parseFloat(u.realized_pnl||0)>=0?'text-bb-green':'text-bb-red'}`}>${formatNumber(u.realized_pnl)}</td><td className={`px-4 py-3 font-medium tabular-nums ${parseFloat(u.total_pnl||0)>=0?'text-bb-green':'text-bb-red'}`}>${formatNumber(u.total_pnl)}</td><td className={`px-4 py-3 tabular-nums ${parseInt(u.net_position||0,10)>=0?'text-bb-green':'text-bb-red'}`}>{formatInt(u.net_position)}</td><td className="px-4 py-3 tabular-nums text-bb-white">{formatInt(u.total_volume)}</td><td className="px-4 py-3 tabular-nums text-bb-white">{formatInt(u.trade_count)}</td><td className="px-4 py-3 tabular-nums text-bb-cyan">{(parseFloat(u.win_rate||0)*100).toFixed(1)}%</td><td className={`px-4 py-3 tabular-nums text-xs ${parseFloat(u.avg_profit_per_trade||0)>=0?'text-bb-green':'text-bb-red'}`}>${formatNumber(u.avg_profit_per_trade)}</td></tr>))}</tbody></table>}</div></div>
+      {state.anomalies.length>0&&(<div className="panel"><div className="panel-header"><div className="panel-title">Detected Anomalies ({state.anomalies.length})</div></div><div className="p-4 space-y-2 max-h-[300px] overflow-y-auto">{state.anomalies.map((a,i)=>(<div key={i} className="p-3 bg-bb-redBg border border-bb-red/30 rounded text-sm"><div className="flex items-center justify-between mb-1"><span className="font-medium text-bb-red uppercase text-xs">{a.type?.replace(/_/g,' ')}</span><span className="text-xs text-bb-muted">{a.severity}</span></div><div className="text-bb-white">{a.details}</div><div className="text-xs text-bb-muted mt-1">User: {a.user_id} | Market: {a.market_id} | {formatDateTime(a.timestamp)}</div></div>))}</div></div>)}
     </div>
   );
 }
@@ -777,119 +298,28 @@ function AuditTab(){
   const colors={login:'text-bb-green',logout:'text-bb-muted',order_submit:'text-bb-cyan',order_cancel:'text-bb-yellow',rate_limited:'text-bb-red',banned:'text-bb-red',error:'text-bb-red'};
   return(
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-bb-orange">Audit Log</h2>
-        <div className="flex gap-2">
-          <select className="px-3 py-1.5 input-field text-xs" onChange={e=>fetchAudit(parseInt(e.target.value))}>
-            <option value="100">Last 100</option>
-            <option value="500">Last 500</option>
-            <option value="1000">Last 1000</option>
-          </select>
-          <button onClick={()=>fetchAudit()} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button>
-        </div>
-      </div>
-      <div className="panel max-h-[600px] overflow-y-auto">
-        {state.auditLog.length===0?<div className="p-8 text-center text-bb-muted">No audit events</div>:
-        <table className="w-full">
-          <thead className="sticky top-0 bg-bb-panel">
-            <tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider">
-              <th className="px-4 py-3">Time</th>
-              <th className="px-4 py-3">Event</th>
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">IP</th>
-              <th className="px-4 py-3">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.auditLog.map((e,i)=>(
-              <tr key={i} className="border-b border-bb-border/30 table-row text-sm">
-                <td className="px-4 py-2 text-bb-muted tabular-nums text-xs">{formatDateTime(e.timestamp)}</td>
-                <td className="px-4 py-2"><span className={`${colors[e.event_type]||'text-bb-orange'} font-medium`}>{e.event_type?.replace(/_/g,' ').toUpperCase()}</span></td>
-                <td className="px-4 py-2 text-bb-orange">{e.user_id||'--'}</td>
-                <td className="px-4 py-2 text-bb-mutedDark tabular-nums">{e.ip_address||'--'}</td>
-                <td className="px-4 py-2 text-bb-muted text-xs truncate max-w-xs">
-                  {e.details?.market_id&&`Market: ${e.details.market_id}`}
-                  {e.details?.reason&&` | ${e.details.reason}`}
-                  {e.details?.side&&` | ${e.details.side} ${e.details.qty}@${e.details.price}`}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>}
-      </div>
+      <div className="flex items-center justify-between"><h2 className="text-lg font-bold text-bb-orange">Audit Log</h2><div className="flex gap-2"><select className="px-3 py-1.5 input-field text-xs" onChange={e=>fetchAudit(parseInt(e.target.value))}><option value="100">Last 100</option><option value="500">Last 500</option><option value="1000">Last 1000</option></select><button onClick={()=>fetchAudit()} className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Refresh/>Refresh</button></div></div>
+      <div className="panel max-h-[600px] overflow-y-auto">{state.auditLog.length===0?<div className="p-8 text-center text-bb-muted">No audit events</div>:<table className="w-full"><thead className="sticky top-0 bg-bb-panel"><tr className="border-b border-bb-border text-left text-xs text-bb-muted uppercase tracking-wider"><th className="px-4 py-3">Time</th><th className="px-4 py-3">Event</th><th className="px-4 py-3">User</th><th className="px-4 py-3">IP</th><th className="px-4 py-3">Details</th></tr></thead><tbody>{state.auditLog.map((e,i)=>(<tr key={i} className="border-b border-bb-border/30 table-row text-sm"><td className="px-4 py-2 text-bb-muted tabular-nums text-xs">{formatDateTime(e.timestamp)}</td><td className="px-4 py-2"><span className={`${colors[e.event_type]||'text-bb-orange'} font-medium`}>{e.event_type?.replace(/_/g,' ').toUpperCase()}</span></td><td className="px-4 py-2 text-bb-orange">{e.user_id||'--'}</td><td className="px-4 py-2 text-bb-mutedDark tabular-nums">{e.ip_address||'--'}</td><td className="px-4 py-2 text-bb-muted text-xs truncate max-w-xs">{e.details?.market_id&&`Market: ${e.details.market_id}`}{e.details?.reason&&` | ${e.details.reason}`}{e.details?.side&&` | ${e.details.side} ${e.details.qty}@${e.details.price}`}</td></tr>))}</tbody></table>}</div>
     </div>
   );
 }
 
-function Notifications(){
-  const{state}=useContext(AppContext);
-  if(state.notifications.length===0)return null;
-  return(
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">
-      {state.notifications.map(n=>(
-        <div key={n.id} className={`notification ${n.type} px-4 py-3 text-sm font-medium slide-down shadow-lg`}>
-          {n.message}
-        </div>
-      ))}
-    </div>
-  );
-}
+function Notifications(){const{state}=useContext(AppContext);if(state.notifications.length===0)return null;return(<div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm">{state.notifications.map(n=>(<div key={n.id} className={`notification ${n.type} px-4 py-3 text-sm font-medium slide-down shadow-lg`}>{n.message}</div>))}</div>);}
 
 function Dashboard(){
   const{state,update,logout}=useContext(AppContext);
-      const tabs=[
-    {id:'overview',label:'Overview',icon:<Icons.Chart/>},
-    {id:'users',label:'Users',icon:<Icons.Users/>},
-    {id:'markets',label:'Markets',icon:<Icons.Chart/>},
-    {id:'analytics',label:'Analytics',icon:<Icons.Analytics/>},
-    {id:'audit',label:'Audit Log',icon:<Icons.Clock/>},
-  ];
+  const tabs=[{id:'overview',label:'Overview',icon:<Icons.Chart/>},{id:'users',label:'Users',icon:<Icons.Users/>},{id:'markets',label:'Markets',icon:<Icons.Chart/>},{id:'activity',label:'User Activity',icon:<Icons.Activity/>},{id:'analytics',label:'Analytics',icon:<Icons.Analytics/>},{id:'audit',label:'Audit Log',icon:<Icons.Clock/>}];
   return(
     <div className="min-h-screen bg-bb-bg">
-      <header className="px-6 py-3 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#18181c,#101013)'}}>
-        <div className="flex items-center gap-6">
-          <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
-          <div className="text-bb-yellow text-xs uppercase tracking-wider">Admin Dashboard</div>
-        </div>
-        <div className="flex items-center gap-4">
-          <a href="fortisian_trading.html" className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Home/>Trading</a>
-          <span className="text-bb-muted text-sm">Admin: <span className="text-bb-orange">{state.displayName}</span></span>
-          <button onClick={logout} className="px-3 py-1.5 text-xs text-bb-muted hover:text-bb-red border border-bb-border hover:border-bb-red/50 rounded">LOGOUT</button>
-        </div>
-      </header>
-      
-      <div className="px-6 border-b border-bb-border bg-bb-panel">
-        <div className="flex gap-1">
-          {tabs.map(t=>(
-            <button key={t.id} onClick={()=>update({activeTab:t.id})} className={`tab flex items-center gap-2 ${state.activeTab===t.id?'active':'text-bb-muted'}`}>
-              {t.icon}{t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      
-      <main className="p-6">
-        {state.activeTab==='overview'&&<OverviewTab/>}
-        {state.activeTab==='users'&&<UsersTab/>}
-        {state.activeTab==='markets'&&<MarketsTab/>}
-        {state.activeTab==='analytics'&&<AnalyticsTab/>}
-        {state.activeTab==='audit'&&<AuditTab/>}
-      </main>
-      
+      <header className="px-6 py-3 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#18181c,#101013)'}}><div className="flex items-center gap-6"><div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div><div className="text-bb-yellow text-xs uppercase tracking-wider">Admin Dashboard</div></div><div className="flex items-center gap-4"><a href="fortisian_trading.html" className="flex items-center gap-2 px-3 py-1.5 text-xs text-bb-muted hover:text-bb-orange border border-bb-border rounded"><Icons.Home/>Trading</a><span className="text-bb-muted text-sm">Admin: <span className="text-bb-orange">{state.displayName}</span></span><button onClick={logout} className="px-3 py-1.5 text-xs text-bb-muted hover:text-bb-red border border-bb-border hover:border-bb-red/50 rounded">LOGOUT</button></div></header>
+      <div className="px-6 border-b border-bb-border bg-bb-panel"><div className="flex gap-1">{tabs.map(t=>(<button key={t.id} onClick={()=>update({activeTab:t.id})} className={`tab flex items-center gap-2 ${state.activeTab===t.id?'active':'text-bb-muted'}`}>{t.icon}{t.label}</button>))}</div></div>
+      <main className="p-6">{state.activeTab==='overview'&&<OverviewTab/>}{state.activeTab==='users'&&<UsersTab/>}{state.activeTab==='markets'&&<MarketsTab/>}{state.activeTab==='activity'&&<UserActivityTab/>}{state.activeTab==='analytics'&&<AnalyticsTab/>}{state.activeTab==='audit'&&<AuditTab/>}</main>
       <Notifications/>
     </div>
   );
 }
 
-function App(){
-  const admin=useAdmin();
-  return(
-    <AppContext.Provider value={admin}>
-      {admin.state.isLoggedIn&&admin.state.isAdmin?<Dashboard/>:<LoginPage/>}
-    </AppContext.Provider>
-  );
-}
-
+function App(){const admin=useAdmin();return(<AppContext.Provider value={admin}>{admin.state.isLoggedIn&&admin.state.isAdmin?<Dashboard/>:<LoginPage/>}</AppContext.Provider>);}
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 </body>
