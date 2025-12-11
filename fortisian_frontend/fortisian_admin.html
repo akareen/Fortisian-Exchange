@@ -120,7 +120,7 @@ function useAdmin(){
       }
       update({loading:false});return{success:false,error:d.error};
     }catch(e){update({loading:false});return{success:false,error:e.message};}
-  },[apiCall]);
+  },[apiCall,notify]);
   
   const logout=useCallback(async()=>{
     try{await apiCall('/auth/logout',{method:'POST'});}catch(e){}
@@ -226,7 +226,10 @@ function OverviewTab(){
     </div>
   );
 }
-[showCreate,setShowCreate]=useState(false);
+
+function UsersTab(){
+  const{state,createUser,banUser,unbanUser,fetchUsers}=useContext(AppContext);
+  const[showCreate,setShowCreate]=useState(false);
   const[newUser,setNewUser]=useState({userId:'',password:'',displayName:'',isAdmin:false});
   const handleCreate=()=>{if(!newUser.userId||!newUser.password)return;createUser(newUser.userId,newUser.password,newUser.displayName||newUser.userId,newUser.isAdmin);setNewUser({userId:'',password:'',displayName:'',isAdmin:false});setShowCreate(false);};
   return(
