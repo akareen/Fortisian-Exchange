@@ -1851,6 +1851,9 @@ if __name__ == "__main__":
                         help="Server mode: 'fresh' starts new exchange, 'rebuild' restores from MongoDB")
     parser.add_argument("--mongo-uri", default="mongodb://localhost:27017", help="MongoDB URI")
     parser.add_argument("--mongo-db", default="exchange", help="MongoDB database name")
+    parser.add_argument("--mongo-user", help="MongoDB username (optional)")
+    parser.add_argument("--mongo-password", help="MongoDB password (optional)")
+    parser.add_argument("--mongo-auth-source", default="admin", help="MongoDB auth database (default: admin)")
     parser.add_argument("--no-persistence", action="store_true", help="Disable persistence")
     parser.add_argument("--user-config", default="user_config.json", 
                         help="Path to user configuration JSON file (default: user_config.json)")
@@ -1875,6 +1878,9 @@ if __name__ == "__main__":
     persistence_config = PersistenceConfig(
         mongo_uri=args.mongo_uri,
         database=args.mongo_db,
+        username=args.mongo_user,
+        password=args.mongo_password,
+        auth_source=args.mongo_auth_source,
     )
     
     # Create or rebuild exchange based on mode

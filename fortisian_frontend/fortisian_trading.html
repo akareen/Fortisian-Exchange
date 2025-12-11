@@ -373,10 +373,8 @@ function useApp(){
   const toggleUserMenu=useCallback((e)=>{e?.stopPropagation();dispatch({type:'TOGGLE_USER_MENU'});},[]);
   
   useEffect(()=>{fetchMarkets();},[]);
-  // Refresh markets periodically when logged in
-  useEffect(()=>{if(state.isLoggedIn){const interval=setInterval(()=>{fetchMarkets();},30000);return()=>clearInterval(interval);}},[state.isLoggedIn,fetchMarkets]);
   useEffect(()=>{const h=(e)=>{if(['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();setOrderForm({orderFormPrice:'',orderFormQty:''});}return;}if(e.key==='m'){e.preventDefault();toggleSound();}if(e.key==='c'&&state.openOrders.length>0){e.preventDefault();cancelAllOrders();}if(e.key>='1'&&e.key<='9'){const i=parseInt(e.key)-1;if(state.availableMarkets[i]){e.preventDefault();switchMarket(state.availableMarkets[i]);}}if(e.key==='Escape')setOrderForm({orderFormPrice:'',orderFormQty:''});};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h);},[state.openOrders,state.availableMarkets,cancelAllOrders,switchMarket,toggleSound,setOrderForm]);
-  return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu,fetchMarkets};
+  return{state,dispatch,login,logout,submitOrder,cancelOrder,cancelAllOrders,switchMarket,setOrderForm,toggleSound,toggleUserMenu};
 }
 
 // Icons (same as before)
@@ -428,14 +426,13 @@ function LoginPage(){
 
 // Header (same as before with fixed admin URL)
 function Header(){
-  const{state,logout,switchMarket,toggleSound,toggleUserMenu,fetchMarkets}=useContext(AppContext);
+  const{state,logout,switchMarket,toggleSound,toggleUserMenu}=useContext(AppContext);
   return(
     <header className="px-4 py-2 flex items-center justify-between border-b border-bb-border" style={{background:'linear-gradient(180deg,#18181c,#101013)'}}>
       <div className="flex items-center gap-5">
         <div className="text-bb-orange font-bold text-lg tracking-[0.15em]">FORTISIAN</div>
         <div className="flex items-center gap-1">
           {state.availableMarkets.map((m,i)=>(<button key={m} onClick={()=>switchMarket(m)} className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${state.currentMarket===m?'bg-bb-orange/20 text-bb-orange border border-bb-orange/30':'text-bb-muted hover:text-bb-text hover:bg-bb-panelHover border border-transparent'}`}>{m}</button>))}
-          <button onClick={fetchMarkets} className="px-2 py-1.5 text-xs text-bb-muted hover:text-bb-orange rounded transition-all" title="Refresh Markets"><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg></button>
         </div>
         {state.marketInfo[state.currentMarket]&&(
           <div className="flex flex-col">
@@ -517,12 +514,20 @@ function OrderBook(){
   const{state,setOrderForm}=useContext(AppContext);
   const[flashStates,setFlashStates]=useState({});
   
-  // Convert book objects to sorted price arrays
-  const allPrices=useMemo(()=>{
-    const bidPrices=Object.keys(state.bids).map(p=>parseFloat(p));
-    const askPrices=Object.keys(state.asks).map(p=>parseFloat(p));
-    const allP=new Set([...bidPrices,...askPrices]);
-    return Array.from(allP).sort((a,b)=>b-a); // Descending order
+  // Get all unique prices as both float (for sorting) and original key (for lookup)
+  const priceData=useMemo(()=>{
+    const priceMap = new Map(); // float -> original key
+    Object.keys(state.bids).forEach(k => {
+      const f = parseFloat(k);
+      if (!priceMap.has(f)) priceMap.set(f, k);
+    });
+    Object.keys(state.asks).forEach(k => {
+      const f = parseFloat(k);
+      if (!priceMap.has(f)) priceMap.set(f, k);
+    });
+    // Sort descending by float value
+    const sorted = Array.from(priceMap.entries()).sort((a,b) => b[0] - a[0]);
+    return sorted; // Array of [float, originalKey]
   },[state.bids,state.asks]);
   
   const maxQty=useMemo(()=>{
@@ -561,13 +566,12 @@ function OrderBook(){
         <div className="text-right">Ask</div>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {allPrices.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">📊 Waiting for orders...</div>:
-        allPrices.map((price,idx)=>{
-          // Use consistent string key with 2 decimal places
-          const lookupKey = String(price);
-          const priceKey=price.toFixed(2);
-          const bid=state.bids[lookupKey];
-          const ask=state.asks[lookupKey];
+        {priceData.length===0?<div className="flex items-center justify-center h-full text-bb-muted text-sm">📊 Waiting for orders...</div>:
+        priceData.map(([priceFloat, originalKey],idx)=>{
+          // Use original key for lookup, formatted price for display
+          const priceKey=priceFloat.toFixed(2);
+          const bid=state.bids[originalKey] || state.bids[priceKey] || state.bids[String(priceFloat)];
+          const ask=state.asks[originalKey] || state.asks[priceKey] || state.asks[String(priceFloat)];
           const bq=bid?.qty||0;
           const aq=ask?.qty||0;
           
@@ -583,11 +587,12 @@ function OrderBook(){
           const hasAsk=aq>0;
           const priceColorClass=isBB?'text-bb-green font-bold':isBA?'text-bb-red font-bold':hasBid?'text-bb-green':hasAsk?'text-bb-red':'text-bb-white';
           
-          const fl=flashStates[priceKey]==='green'?'flash-green':flashStates[priceKey]==='red'?'flash-red':'';
+          const fl=flashStates[originalKey]==='green'?'flash-green':flashStates[originalKey]==='red'?'flash-red':(flashStates[priceKey]==='green'?'flash-green':flashStates[priceKey]==='red'?'flash-red':'');
           
           // Show spread indicator
-          const showSpread=idx>0&&state.bestAsk&&state.bestBid&&
-            parseFloat(allPrices[idx-1].toFixed(2))===parseFloat(state.bestAsk)&&
+          const prevPrice = idx > 0 ? priceData[idx-1][0] : null;
+          const showSpread=idx>0&&state.bestAsk&&state.bestBid&&prevPrice&&
+            prevPrice.toFixed(2)===parseFloat(state.bestAsk).toFixed(2)&&
             priceKey===parseFloat(state.bestBid).toFixed(2);
           
           return(<React.Fragment key={priceKey}>
@@ -628,7 +633,7 @@ function OrderEntry(){
   const{state,submitOrder,setOrderForm}=useContext(AppContext);
   const[submitting,setSubmitting]=useState(null);
   const{orderFormPrice:price,orderFormQty:qty,orderFormTif:tif}=state;
-  const handleSubmit=(side)=>{if(!price||!qty||submitting)return;setSubmitting(side);submitOrder(side,price,qty,tif);setTimeout(()=>{setSubmitting(null);setOrderForm({orderFormQty:''});},300);};
+  const handleSubmit=(side)=>{if(!price||!qty||submitting)return;setSubmitting(side);submitOrder(side,price,qty,tif);setTimeout(()=>{setSubmitting(null);},300);};
   const handleBest=(s)=>{const p=s==='buy'?state.bestAsk:state.bestBid;if(p)setOrderForm({orderFormPrice:p});};
   const disabled=submitting||!price||!qty||state.marketStatus!=='active';
   return(

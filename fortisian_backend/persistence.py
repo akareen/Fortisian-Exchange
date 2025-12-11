@@ -138,6 +138,11 @@ class PersistenceConfig:
     mongo_uri: str = "mongodb://localhost:27017"
     database: str = "fortisian_exchange"
     
+    # MongoDB authentication (optional - can also be in URI)
+    username: Optional[str] = None
+    password: Optional[str] = None
+    auth_source: str = "admin"  # Database to authenticate against
+    
     # Collection names
     events_collection: str = "events"
     orders_collection: str = "orders"
@@ -162,6 +167,24 @@ class PersistenceConfig:
     
     # Rebuild settings
     replay_batch_size: int = 1000        # Events per batch during rebuild
+    
+    def get_connection_uri(self) -> str:
+        """Build the full MongoDB connection URI with auth if provided."""
+        if self.username and self.password:
+            # Parse the base URI and inject credentials
+            from urllib.parse import urlparse, urlunparse, quote_plus
+            parsed = urlparse(self.mongo_uri)
+            # Build new URI with credentials
+            netloc = f"{quote_plus(self.username)}:{quote_plus(self.password)}@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            new_uri = urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+            # Add authSource if not already in query
+            if 'authSource' not in new_uri:
+                separator = '&' if '?' in new_uri else '?'
+                new_uri += f"{separator}authSource={self.auth_source}"
+            return new_uri
+        return self.mongo_uri
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -552,13 +575,21 @@ class ExchangePersistence:
             return
         
         try:
-            # Connect to MongoDB
+            # Connect to MongoDB with optional authentication
+            connection_uri = self.config.get_connection_uri()
+            logger.info(f"Connecting to MongoDB: {self.config.mongo_uri.split('@')[-1] if '@' in self.config.mongo_uri else self.config.mongo_uri}")
+            
             self._client = AsyncIOMotorClient(
-                self.config.mongo_uri,
+                connection_uri,
                 maxPoolSize=self.config.max_pool_size,
                 minPoolSize=self.config.min_pool_size,
+                serverSelectionTimeoutMS=5000,
             )
             self._db = self._client[self.config.database]
+            
+            # Test connection
+            await self._client.admin.command('ping')
+            logger.info("MongoDB connection successful")
             
             # Create indexes
             await self._create_indexes()
@@ -1096,11 +1127,16 @@ class ExchangeRebuilder:
     
     async def connect(self) -> None:
         """Connect to MongoDB."""
+        connection_uri = self.config.get_connection_uri()
         self._client = AsyncIOMotorClient(
-            self.config.mongo_uri,
+            connection_uri,
             maxPoolSize=self.config.max_pool_size,
+            serverSelectionTimeoutMS=5000,
         )
         self._db = self._client[self.config.database]
+        # Test connection
+        await self._client.admin.command('ping')
+        logger.info("ExchangeRebuilder connected to MongoDB")
     
     async def disconnect(self) -> None:
         """Disconnect from MongoDB."""
