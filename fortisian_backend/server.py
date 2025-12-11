@@ -1238,6 +1238,22 @@ class TradingServer:
         stats["suspicious_users"] = self.audit.get_suspicious_users()
         stats["book_cache"] = self.book_cache.get_stats()
         
+        # Ensure market_stats is in the expected format for the admin dashboard
+        if "market_stats" not in stats:
+            market_stats = {}
+            for market in self.exchange.list_markets():
+                market_stats[str(market.id)] = {
+                    "title": market.title,
+                    "description": market.config.description if market.config else "",
+                    "status": market.status.value,
+                    "orders": len(self.exchange.get_all_orders(str(market.id))) if hasattr(self.exchange, 'get_all_orders') else 0,
+                    "trades": self.analytics.get_trade_count(str(market.id)) if hasattr(self.analytics, 'get_trade_count') else 0,
+                    "tick_size": str(market.config.tick_size) if market.config else "0.01",
+                    "lot_size": market.config.lot_size if market.config else 1,
+                    "max_position": market.config.max_position if market.config else None,
+                }
+            stats["market_stats"] = market_stats
+        
         return web.json_response(stats)
     
     async def _admin_audit_handler(self, request: web.Request) -> web.Response:
@@ -1836,6 +1852,10 @@ if __name__ == "__main__":
     parser.add_argument("--mongo-uri", default="mongodb://localhost:27017", help="MongoDB URI")
     parser.add_argument("--mongo-db", default="exchange", help="MongoDB database name")
     parser.add_argument("--no-persistence", action="store_true", help="Disable persistence")
+    parser.add_argument("--user-config", default="user_config.json", 
+                        help="Path to user configuration JSON file (default: user_config.json)")
+    parser.add_argument("--users-file", default="users.json",
+                        help="Path to users.json storage file (default: users.json)")
     args = parser.parse_args()
     
     # Configure logging
@@ -1905,12 +1925,62 @@ if __name__ == "__main__":
     else:
         print("Persistence disabled")
     
+    # Load user store with users from config file
+    user_store = None
+    if args.user_config:
+        try:
+            import json as json_module
+            with open(args.user_config, 'r') as f:
+                user_config_data = json_module.load(f)
+            
+            # Create user store with the users.json output file
+            from auth import create_auth_system
+            user_store, _ = create_auth_system(
+                storage_path=args.users_file,
+                create_default_admin=False,
+            )
+            
+            # Create admin users
+            for admin in user_config_data.get("admins", []):
+                try:
+                    user_store.create_user(
+                        user_id=admin["user_id"],
+                        password=admin["password"],
+                        display_name=admin.get("display_name", admin["user_id"]),
+                        is_admin=True,
+                    )
+                    print(f"  Created admin: {admin['user_id']}")
+                except ValueError as e:
+                    print(f"  Skipped admin {admin['user_id']}: {e}")
+            
+            # Create regular users
+            for user in user_config_data.get("users", []):
+                try:
+                    user_store.create_user(
+                        user_id=user["user_id"],
+                        password=user["password"],
+                        display_name=user.get("display_name", user["user_id"]),
+                        is_admin=False,
+                        team=user.get("team"),
+                    )
+                    print(f"  Created user: {user['user_id']}")
+                except ValueError as e:
+                    print(f"  Skipped user {user['user_id']}: {e}")
+            
+            print(f"Loaded {user_store.user_count()} users ({user_store.admin_count()} admins)")
+        except FileNotFoundError:
+            print(f"Warning: User config file not found: {args.user_config}")
+        except Exception as e:
+            print(f"Warning: Failed to load user config: {e}")
+    
     # Create and run server
     server = TradingServer(
         exchange, 
         config, 
         book_cache_config=book_cache_config,
-        persistence=persistence
+        persistence=persistence,
+        user_store=user_store,
+        user_storage_path=args.users_file,
     )
     
     server.run()
