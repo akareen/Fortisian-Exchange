@@ -1787,13 +1787,22 @@ class TradingServer:
         print(f"Starting trading server on {self.config.host}:{self.config.port}")
         print(f"Admin token: {self.config.admin_token}")
         
-        # Start persistence in background
-        if self.persistence:
-            loop = asyncio.get_event_loop()
-            loop.create_task(self.persistence.start())
+        loop = asyncio.get_event_loop()
         
-        # Start all markets
+        # Start persistence FIRST and WAIT for it to complete
+        if self.persistence:
+            print("Starting persistence layer...")
+            try:
+                loop.run_until_complete(self.persistence.start())
+                print("Persistence layer started successfully")
+            except Exception as e:
+                print(f"WARNING: Persistence failed to start: {e}")
+                print("Continuing without persistence...")
+                self.persistence = None
+        
+        # Start all markets AFTER persistence is ready
         self.exchange.start_all_markets()
+        print(f"Started {len(self.exchange.list_markets())} markets")
         
         web.run_app(self.app, host=self.config.host, port=self.config.port)
 

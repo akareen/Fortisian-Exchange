@@ -714,6 +714,14 @@ class ExchangePersistence:
             IndexModel([("seq", DESCENDING)]),
         ])
         
+        # Book snapshots collection - for order book history
+        book_snapshots = self._db["book_snapshots"]
+        await book_snapshots.create_indexes([
+            IndexModel([("market_id", ASCENDING), ("ts", DESCENDING)]),
+            IndexModel([("seq", ASCENDING)]),
+            IndexModel([("ts", DESCENDING)]),
+        ])
+        
         logger.info("MongoDB indexes created")
     
     async def _recover_sequence(self) -> int:
@@ -731,6 +739,7 @@ class ExchangePersistence:
         """Install our interceptor on the exchange's event handler."""
         self._original_event_handler = self.exchange._on_event
         self.exchange._on_event = self._intercept_event
+        logger.info(f"Event interceptor installed. Original handler: {self._original_event_handler}")
     
     def _intercept_event(self, event: EngineEvent) -> None:
         """
@@ -748,6 +757,9 @@ class ExchangePersistence:
         # Assign sequence number (thread-safe via GIL for sync code)
         self._sequence += 1
         seq = self._sequence
+        
+        event_type = type(event).__name__
+        logger.debug(f"Intercepted event #{seq}: {event_type}")
         
         # Call original handler first (WebSocket distribution, etc.)
         if self._original_event_handler:
@@ -828,6 +840,49 @@ class ExchangePersistence:
                 
                 # Update positions for both buyer and seller
                 await self._update_positions_for_trade(trade)
+        
+        # Order rejection events - useful for audit/debugging
+        elif isinstance(event, OrderRejected):
+            # Store rejected orders for audit trail
+            order_id = getattr(event, 'order_id', None)
+            user_id = getattr(event, 'user_id', None)
+            market_id = getattr(event, 'market_id', None)
+            if order_id:
+                await self._pipeline.write(WriteOperation(
+                    collection=self.config.order_history_collection,
+                    operation='insert',
+                    document={
+                        "order_id": str(order_id),
+                        "seq": sequence,
+                        "event_type": "rejected",
+                        "ts": datetime.now(timezone.utc),
+                        "market_id": str(market_id) if market_id else None,
+                        "user_id": str(user_id) if user_id else None,
+                        "reason": getattr(event, 'reason', None),
+                        "reason_text": getattr(event, 'reason_text', None),
+                    },
+                ))
+        
+        # Book events - store periodic snapshots for replay/analysis
+        elif isinstance(event, BookSnapshot):
+            market_id = getattr(event, 'market_id', None)
+            if market_id:
+                # Store book snapshot in a separate collection
+                await self._pipeline.write(WriteOperation(
+                    collection="book_snapshots",
+                    operation='insert',
+                    document={
+                        "seq": sequence,
+                        "ts": datetime.now(timezone.utc),
+                        "market_id": str(market_id),
+                        "best_bid": str(event.best_bid) if event.best_bid else None,
+                        "best_ask": str(event.best_ask) if event.best_ask else None,
+                        "spread": str(event.spread) if event.spread else None,
+                        "bid_levels": len(event.bids) if event.bids else 0,
+                        "ask_levels": len(event.asks) if event.asks else 0,
+                        "data": event.to_dict() if hasattr(event, 'to_dict') else {},
+                    },
+                ))
         
         # Market status events
         elif isinstance(event, MarketStatusChanged):
